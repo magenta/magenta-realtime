@@ -1,0 +1,64 @@
+from __gin__ import dynamic_registration
+
+from flax import linen
+
+from magenta_rt.depthformer import modules as depthformer
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components.attention import dense_attention
+from flaxformer.components import dense
+from flaxformer.components import layer_norm
+from flaxformer.components import relative_position_biases
+
+# Depthformer specific params.
+NUM_DEPTH_LAYERS = 4
+NUM_TEMPORAL_LAYERS = 20  # TODO(iansimon): make this a function of NUM_DECODER_LAYERS and NUM_DEPTH_LAYERS
+NUM_LEVELS = %gin.REQUIRED
+DEPTH_DROPOUT_RATE = 0.0
+DEPTH_MLP_DIM = %MLP_DIM
+
+temp/relative_position_biases.RelativePositionBiases:
+  num_heads = %NUM_HEADS
+  # TODO(iansimon): this should depend on the number of target frames
+  num_buckets = 128
+  max_distance = 128
+TEMP_POS_BIAS = @temp/relative_position_biases.RelativePositionBiases
+
+depth/relative_position_biases.RelativePositionBiases:
+  num_heads = %NUM_HEADS
+  num_buckets = %NUM_LEVELS
+  max_distance = %NUM_LEVELS
+DEPTH_POS_BIAS = @depth/relative_position_biases.RelativePositionBiases
+
+DECODER_FACTORY = @depthformer.DepthformerDecoder
+
+depthformer.DepthformerDecoder:
+  token_embedder_factory = %DECODER_TOKEN_EMBEDDER_FACTORY
+  layer_factory = @t5_architecture.DecoderLayer
+  dropout_factory = %DROPOUT_FACTORY
+  layer_norm_factory = @layer_norm.T5LayerNorm
+  num_layers = %NUM_TEMPORAL_LAYERS
+  layer_remat = 'none'
+  shared_relative_position_bias_factory = %TEMP_POS_BIAS
+  output_logits_factory = @output_logits/dense.DenseGeneral
+  # DepthFormer Specific
+  depth_layer_factory = @depth_decoder/t5_architecture.DecoderLayer
+  depth_dims_converter_factory = None
+  num_depth_layers = %NUM_DEPTH_LAYERS
+  num_levels = %NUM_LEVELS
+  shared_relative_position_depth_bias_factory = %DEPTH_POS_BIAS
+
+# Depth Decoder settings.
+depth_decoder/t5_architecture.DecoderLayer:
+  self_attention = @dense_attention.MultiHeadDotProductAttention()
+  mlp = @depth_decoder/dense.MlpBlock()
+  dropout_factory = @depth_decoder/linen.Dropout
+  layer_norm_factory = @layer_norm.T5LayerNorm
+
+depth_decoder/dense.MlpBlock:
+  use_bias = False
+  intermediate_dim = %DEPTH_MLP_DIM
+  intermediate_dropout_rate = %DEPTH_DROPOUT_RATE
+  final_dropout_rate = 0
+
+depth_decoder/linen.Dropout:
+  rate = %DEPTH_DROPOUT_RATE

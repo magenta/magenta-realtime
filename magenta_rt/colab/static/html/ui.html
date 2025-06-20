@@ -1,0 +1,111 @@
+<html>
+  <head>
+    <style>
+      #ui {
+        display: flex;
+        flex-direction: column;
+        width: 15em;
+        padding: 1em;
+        background-color: rgb(250, 250, 250);
+        border-radius: 1em;
+      }
+
+      button {
+        flex: 1;
+        margin: 0.2em;
+        height: 2em;
+      }
+
+      #dot {
+        background-color: rgb(240, 240, 240);
+        width: 2em;
+        height: 2em;
+        border-radius: 50%;
+        animation: none;
+        margin: 0.2em;
+      }
+
+      #rtf-div {
+        margin: 0.2em;
+        width: 3em;
+        text-align: center;
+        vertical-align: middle;
+        height: 2em;
+        line-height: 2em;
+        border-radius: 20vh;
+        background-color: rgb(240, 240, 240);
+        color: white;
+      }
+
+      #link-background {
+        background-color: rgb(252, 176, 62);
+        padding-top: 0.2em;
+        padding-bottom: 0.2em;
+        padding-right: 1em;
+        padding-left: 1em;
+        font-family: Arial;
+        margin-left: 1em;
+        margin-right: 1em;
+      }
+
+      #outputs,
+      #buttons {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      #progress-bar-background,
+      #rms-meter-background {
+        background-color: rgb(240, 240, 240);
+        flex: 1;
+        margin: 0.2em;
+        height: 2em;
+      }
+
+      #rms-meter-background {
+        height: 0.5em;
+      }
+
+      #progress-bar-value,
+      #rms-meter-value {
+        background-color: green;
+        height: 100%;
+        width: 0%;
+        animation: none;
+      }
+
+      @keyframes progress {
+        0% {
+          width: 0%;
+        }
+        100% {
+          width: 100%;
+        }
+      }
+
+      @keyframes blinker {
+        0% {
+          background-color: orange;
+        }
+        50% {
+          background-color: red;
+        }
+        100% {
+          background-color: orange;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="ui">
+      <div id="buttons">
+        <button type="button" id="start_button" disabled="true">start</button>
+        <button type="button" id="stop_button" disabled="true">stop</button>
+      </div>
+      <div id="outputs"></div>
+    </div>
+  </body>
+</html>

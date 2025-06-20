@@ -1,0 +1,56 @@
+from __gin__ import dynamic_registration
+
+from magenta_rt.depthformer import model
+from magenta_rt.depthformer import decode as cfg_decoding
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components import embedding
+
+import seqio
+from t5x import decoding
+from t5x import partitioning
+from t5x import utils
+
+include 't5_1_1_base.gin'
+include 'posembed.gin'
+
+MAX_SEQ_LEN = 2250
+SPLIT_POINT = 250
+
+TASK_FEATURE_LENGTHS = {"inputs": %SPLIT_POINT, "targets": %MAX_SEQ_LEN}
+DROPOUT_RATE = 0.1
+
+VOCABULARY = @seqio.PassThroughVocabulary()
+
+NUM_EMBEDDINGS = @vocab_size/utils.round_vocab_size_to_multiple()
+vocab_size/utils.round_vocab_size_to_multiple:
+  vocabulary = %VOCABULARY
+
+# macros needed for continuous inputs
+DECODER_FACTORY = @t5_architecture.Decoder
+DECODER_TOKEN_EMBEDDER_FACTORY = None
+t5_architecture.EncoderDecoder.decoder_factory = %DECODER_FACTORY
+t5_architecture.Decoder.token_embedder_factory = %DECODER_TOKEN_EMBEDDER_FACTORY
+
+# Set params for all models
+model.RTSongInferenceEncoderDecoderModel:
+  module = %ARCHITECTURE
+  input_vocabulary = %VOCABULARY
+  output_vocabulary = %VOCABULARY
+  optimizer_def = %OPTIMIZER
+  z_loss = %Z_LOSS
+  label_smoothing = %LABEL_SMOOTHING
+  loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
+  decode_fn = @cfg_decoding.decode_with_classifier_free_guidance
+
+cfg_decoding.decode_with_classifier_free_guidance:
+  guidance_weight = 4.0
+
+decoding.temperature_sample:
+  topk = 40
+  temperature = 1.1
+
+partitioning.PjitPartitioner.num_partitions = 1
+
+seqio.Evaluator:
+  logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
+  num_examples = 512

@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "magenta_rt"
+version = "0.1.0"
+authors = [
+  { name="Google DeepMind" },
+]
+description = "Magenta RT: Real-time music generation"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "absl-py",
+  "chex",
+  "clu",
+  "flax",
+  "gin-config",
+  "flaxformer @ git+https://github.com/google/flaxformer@399ea3a",
+  "google-cloud-storage",
+  "jax",
+  "jaxlib",
+  "numpy",
+  "resampy",
+  # TODO(chrisdonahue): Do we need sentencepiece *and* tensorflow-text?
+  "sentencepiece",
+  "seqio",
+  "soundfile",
+  "t5x @ git+https://github.com/google-research/t5x.git@92c5b46",
+  # TODO(chrisdonahue): Change nightly->stable once MusicCoCa supported.
+  "tensorflow-text-nightly",
+  "tf-nightly",
+  "tf-hub-nightly",
+  "tf2jax",
+  "tqdm",
+  "typing-extensions",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+gpu = [
+  "jax[cuda12]",
+  "t5x[gpu] @ git+https://github.com/google-research/t5x.git@92c5b46",
+]
+tpu = [
+  "jax[tpu]",
+  "t5x[tpu] @ git+https://github.com/google-research/t5x.git@92c5b46",
+]
+
+[project.urls]
+Homepage = "https://github.com/magenta/magenta-realtime"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+"magenta_rt" = [
+  "depthformer/configs/*.gin",
+  "colab/static/js/*.js",
+  "colab/static/html/*.html",
+  ]
+

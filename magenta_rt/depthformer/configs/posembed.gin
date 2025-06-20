@@ -1,0 +1,18 @@
+from __gin__ import dynamic_registration
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components import embedding
+
+POSITION_EMBEDDER_FACTORY = @embedding.FixedEmbed
+SHARED_RELATIVE_POSITION_BIAS_FACTORY = None
+
+t5_architecture.Encoder:
+  position_embedder_factory = %POSITION_EMBEDDER_FACTORY
+  shared_relative_position_bias_factory = %SHARED_RELATIVE_POSITION_BIAS_FACTORY
+
+t5_architecture.Decoder:
+  position_embedder_factory = %POSITION_EMBEDDER_FACTORY
+  shared_relative_position_bias_factory = %SHARED_RELATIVE_POSITION_BIAS_FACTORY
+
+embedding.FixedEmbed:
+  max_length = %MAX_SEQ_LEN
+  features = %EMBED_DIM

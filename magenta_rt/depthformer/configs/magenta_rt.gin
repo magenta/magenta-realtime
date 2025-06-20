@@ -1,0 +1,13 @@
+import seqio
+
+from magenta_rt.depthformer import model
+
+# inputs length is 1006 as the last 6 style tokens are truncated
+TASK_FEATURE_LENGTHS = {"inputs": 1006, "targets": 800}
+SPLIT_POINT = 0
+MAX_SEQ_LEN = 1006
+NUM_LEVELS = 16
+NUM_INPUT_LEVELS = 4
+MODEL = @model.RTSongInferenceEncoderDecoderModel()
+
+seqio.PassThroughVocabulary.size = 29698

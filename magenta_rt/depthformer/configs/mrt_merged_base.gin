@@ -1,0 +1,325 @@
+from __gin__ import dynamic_registration
+from flax import linen
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components.attention import dense_attention
+from flaxformer.components import dense
+from flaxformer.components import embedding
+from flaxformer.components import layer_norm
+from flaxformer.components import relative_position_biases
+from magenta_rt.depthformer import decode as cfg_decoding
+from magenta_rt.depthformer import model
+from magenta_rt.depthformer import modules as depthformer
+import seqio
+from t5x import adafactor
+from t5x import decoding
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+
+# Macros:
+# ==============================================================================
+ACTIVATION_DTYPE = 'bfloat16'
+ACTIVATION_PARTITIONING_DIMS = 1
+ARCHITECTURE = @t5_architecture.EncoderDecoder()
+BIAS_INIT = @bias_init/linen.initializers.normal()
+DECODER_FACTORY = @depthformer.DepthformerDecoder
+DECODER_TOKEN_EMBEDDER_FACTORY = None
+DEPTH_DROPOUT_RATE = 0.0
+DEPTH_MLP_DIM = %MLP_DIM
+DEPTH_POS_BIAS = @depth/relative_position_biases.RelativePositionBiases
+DROPOUT_FACTORY = @dropout_factory/linen.Dropout
+DROPOUT_RATE = 0.1
+EMBED_DIM = 768
+HEAD_DIM = 64
+LABEL_SMOOTHING = 0.0
+LOSS_NORMALIZING_FACTOR = None
+MAX_SEQ_LEN = 1006
+MLP_DIM = 2048
+MODEL = @model.RTSongInferenceEncoderDecoderModel()
+NUM_DECODER_LAYERS = 12
+NUM_DEPTH_LAYERS = 4
+NUM_EMBEDDINGS = @vocab_size/utils.round_vocab_size_to_multiple()
+NUM_ENCODER_LAYERS = 12
+NUM_HEADS = 12
+NUM_INPUT_LEVELS = 4
+NUM_LEVELS = 16
+NUM_TEMPORAL_LAYERS = 20
+OPTIMIZER = @adafactor.Adafactor()
+POSITION_EMBEDDER_FACTORY = @embedding.FixedEmbed
+SCALE = 1.0
+SHARED_RELATIVE_POSITION_BIAS_FACTORY = None
+SPLIT_POINT = 0
+TASK_FEATURE_LENGTHS = {'inputs': 1006, 'targets': 800}
+TEMP_POS_BIAS = @temp/relative_position_biases.RelativePositionBiases
+VOCABULARY = @seqio.PassThroughVocabulary()
+Z_LOSS = 0.0001
+
+# Parameters for adafactor.Adafactor:
+# ==============================================================================
+adafactor.Adafactor.decay_rate = 0.8
+adafactor.Adafactor.step_offset = 0
+
+# Parameters for cfg_decoding.decode_with_classifier_free_guidance:
+# ==============================================================================
+cfg_decoding.decode_with_classifier_free_guidance.guidance_weight = 4.0
+
+# Parameters for t5_architecture.Decoder:
+# ==============================================================================
+t5_architecture.Decoder.dropout_factory = %DROPOUT_FACTORY
+t5_architecture.Decoder.dtype = %ACTIVATION_DTYPE
+t5_architecture.Decoder.layer_factory = @t5_architecture.DecoderLayer
+t5_architecture.Decoder.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.Decoder.num_layers = %NUM_DECODER_LAYERS
+t5_architecture.Decoder.output_logits_factory = @output_logits/dense.DenseGeneral
+t5_architecture.Decoder.position_embedder_factory = %POSITION_EMBEDDER_FACTORY
+t5_architecture.Decoder.shared_relative_position_bias_factory = \
+    %SHARED_RELATIVE_POSITION_BIAS_FACTORY
+t5_architecture.Decoder.token_embedder_factory = %DECODER_TOKEN_EMBEDDER_FACTORY
+
+# Parameters for t5_architecture.DecoderLayer:
+# ==============================================================================
+t5_architecture.DecoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+t5_architecture.DecoderLayer.dropout_factory = %DROPOUT_FACTORY
+t5_architecture.DecoderLayer.encoder_decoder_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+t5_architecture.DecoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.DecoderLayer.mlp = @dense.MlpBlock()
+t5_architecture.DecoderLayer.self_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+
+# Parameters for depth_decoder/t5_architecture.DecoderLayer:
+# ==============================================================================
+depth_decoder/t5_architecture.DecoderLayer.dropout_factory = \
+    @depth_decoder/linen.Dropout
+depth_decoder/t5_architecture.DecoderLayer.layer_norm_factory = \
+    @layer_norm.T5LayerNorm
+depth_decoder/t5_architecture.DecoderLayer.mlp = @depth_decoder/dense.MlpBlock()
+depth_decoder/t5_architecture.DecoderLayer.self_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+
+# Parameters for output_logits/dense.DenseGeneral:
+# ==============================================================================
+output_logits/dense.DenseGeneral.bias_init = %BIAS_INIT
+output_logits/dense.DenseGeneral.dtype = 'float32'
+output_logits/dense.DenseGeneral.features = %NUM_EMBEDDINGS
+output_logits/dense.DenseGeneral.kernel_axis_names = ['embed', 'vocab']
+output_logits/dense.DenseGeneral.kernel_init = \
+    @output_logits_kernel_init/linen.initializers.variance_scaling()
+output_logits/dense.DenseGeneral.use_bias = False
+
+# Parameters for depthformer.DepthformerDecoder:
+# ==============================================================================
+depthformer.DepthformerDecoder.depth_dims_converter_factory = None
+depthformer.DepthformerDecoder.depth_layer_factory = \
+    @depth_decoder/t5_architecture.DecoderLayer
+depthformer.DepthformerDecoder.dropout_factory = %DROPOUT_FACTORY
+depthformer.DepthformerDecoder.layer_factory = @t5_architecture.DecoderLayer
+depthformer.DepthformerDecoder.layer_norm_factory = @layer_norm.T5LayerNorm
+depthformer.DepthformerDecoder.layer_remat = 'none'
+depthformer.DepthformerDecoder.num_depth_layers = %NUM_DEPTH_LAYERS
+depthformer.DepthformerDecoder.num_layers = %NUM_TEMPORAL_LAYERS
+depthformer.DepthformerDecoder.num_levels = %NUM_LEVELS
+depthformer.DepthformerDecoder.output_logits_factory = \
+    @output_logits/dense.DenseGeneral
+depthformer.DepthformerDecoder.shared_relative_position_bias_factory = \
+    %TEMP_POS_BIAS
+depthformer.DepthformerDecoder.shared_relative_position_depth_bias_factory = \
+    %DEPTH_POS_BIAS
+depthformer.DepthformerDecoder.token_embedder_factory = \
+    %DECODER_TOKEN_EMBEDDER_FACTORY
+
+# Parameters for depth_decoder/linen.Dropout:
+# ==============================================================================
+depth_decoder/linen.Dropout.rate = %DEPTH_DROPOUT_RATE
+
+# Parameters for dropout_factory/linen.Dropout:
+# ==============================================================================
+dropout_factory/linen.Dropout.broadcast_dims = (-2,)
+dropout_factory/linen.Dropout.rate = %DROPOUT_RATE
+
+# Parameters for embedding.Embed:
+# ==============================================================================
+embedding.Embed.attend_dtype = 'float32'
+embedding.Embed.cast_input_dtype = 'int32'
+embedding.Embed.dtype = %ACTIVATION_DTYPE
+embedding.Embed.embedding_init = @token_embedder_init/linen.initializers.normal()
+embedding.Embed.features = %EMBED_DIM
+embedding.Embed.name = 'token_embedder'
+embedding.Embed.num_embeddings = %NUM_EMBEDDINGS
+embedding.Embed.one_hot = True
+
+# Parameters for t5_architecture.Encoder:
+# ==============================================================================
+t5_architecture.Encoder.dtype = %ACTIVATION_DTYPE
+t5_architecture.Encoder.input_dropout_factory = %DROPOUT_FACTORY
+t5_architecture.Encoder.layer_factory = @t5_architecture.EncoderLayer
+t5_architecture.Encoder.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.Encoder.num_layers = %NUM_ENCODER_LAYERS
+t5_architecture.Encoder.output_dropout_factory = %DROPOUT_FACTORY
+t5_architecture.Encoder.position_embedder_factory = %POSITION_EMBEDDER_FACTORY
+t5_architecture.Encoder.shared_relative_position_bias_factory = \
+    %SHARED_RELATIVE_POSITION_BIAS_FACTORY
+
+# Parameters for t5_architecture.EncoderDecoder:
+# ==============================================================================
+t5_architecture.EncoderDecoder.decoder_factory = %DECODER_FACTORY
+t5_architecture.EncoderDecoder.dtype = %ACTIVATION_DTYPE
+t5_architecture.EncoderDecoder.encoder_factory = @t5_architecture.Encoder
+t5_architecture.EncoderDecoder.shared_token_embedder_factory = @embedding.Embed
+
+# Parameters for models.EncoderDecoderModel:
+# ==============================================================================
+models.EncoderDecoderModel.input_vocabulary = %VOCABULARY
+models.EncoderDecoderModel.label_smoothing = %LABEL_SMOOTHING
+models.EncoderDecoderModel.loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
+models.EncoderDecoderModel.module = %ARCHITECTURE
+models.EncoderDecoderModel.optimizer_def = %OPTIMIZER
+models.EncoderDecoderModel.output_vocabulary = %VOCABULARY
+models.EncoderDecoderModel.z_loss = %Z_LOSS
+
+# Parameters for t5_architecture.EncoderLayer:
+# ==============================================================================
+t5_architecture.EncoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+t5_architecture.EncoderLayer.attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+t5_architecture.EncoderLayer.dropout_factory = %DROPOUT_FACTORY
+t5_architecture.EncoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.EncoderLayer.mlp = @dense.MlpBlock()
+
+# Parameters for seqio.Evaluator:
+# ==============================================================================
+seqio.Evaluator.logger_cls = \
+    [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
+seqio.Evaluator.num_examples = 512
+
+# Parameters for embedding.FixedEmbed:
+# ==============================================================================
+embedding.FixedEmbed.features = %EMBED_DIM
+embedding.FixedEmbed.max_length = %MAX_SEQ_LEN
+
+# Parameters for dense.MlpBlock:
+# ==============================================================================
+dense.MlpBlock.activations = ('gelu', 'linear')
+dense.MlpBlock.bias_init = %BIAS_INIT
+dense.MlpBlock.dtype = %ACTIVATION_DTYPE
+dense.MlpBlock.final_dropout_rate = 0
+dense.MlpBlock.intermediate_dim = %MLP_DIM
+dense.MlpBlock.intermediate_dropout_rate = %DROPOUT_RATE
+dense.MlpBlock.kernel_init = @mlp_kernel_init/linen.initializers.variance_scaling()
+dense.MlpBlock.use_bias = False
+
+# Parameters for depth_decoder/dense.MlpBlock:
+# ==============================================================================
+depth_decoder/dense.MlpBlock.final_dropout_rate = 0
+depth_decoder/dense.MlpBlock.intermediate_dim = %DEPTH_MLP_DIM
+depth_decoder/dense.MlpBlock.intermediate_dropout_rate = %DEPTH_DROPOUT_RATE
+depth_decoder/dense.MlpBlock.use_bias = False
+
+# Parameters for dense_attention.MultiHeadDotProductAttention:
+# ==============================================================================
+dense_attention.MultiHeadDotProductAttention.bias_init = %BIAS_INIT
+dense_attention.MultiHeadDotProductAttention.broadcast_dropout = True
+dense_attention.MultiHeadDotProductAttention.dropout_rate = %DROPOUT_RATE
+dense_attention.MultiHeadDotProductAttention.dtype = %ACTIVATION_DTYPE
+dense_attention.MultiHeadDotProductAttention.head_dim = %HEAD_DIM
+dense_attention.MultiHeadDotProductAttention.kernel_init = \
+    @attention_kernel_init/linen.initializers.variance_scaling()
+dense_attention.MultiHeadDotProductAttention.num_heads = %NUM_HEADS
+dense_attention.MultiHeadDotProductAttention.use_bias = False
+
+# Parameters for bias_init/linen.initializers.normal:
+# ==============================================================================
+bias_init/linen.initializers.normal.stddev = 1e-06
+
+# Parameters for token_embedder_init/linen.initializers.normal:
+# ==============================================================================
+token_embedder_init/linen.initializers.normal.stddev = 1.0
+
+# Parameters for seqio.PassThroughVocabulary:
+# ==============================================================================
+seqio.PassThroughVocabulary.size = 29698
+
+# Parameters for partitioning.PjitPartitioner:
+# ==============================================================================
+partitioning.PjitPartitioner.num_partitions = 1
+
+# Parameters for relative_position_biases.RelativePositionBiases:
+# ==============================================================================
+relative_position_biases.RelativePositionBiases.dtype = %ACTIVATION_DTYPE
+relative_position_biases.RelativePositionBiases.embedding_init = \
+    @relative_position_bias_init/linen.initializers.variance_scaling()
+relative_position_biases.RelativePositionBiases.max_distance = 128
+relative_position_biases.RelativePositionBiases.num_buckets = 32
+relative_position_biases.RelativePositionBiases.num_heads = %NUM_HEADS
+
+# Parameters for depth/relative_position_biases.RelativePositionBiases:
+# ==============================================================================
+depth/relative_position_biases.RelativePositionBiases.max_distance = %NUM_LEVELS
+depth/relative_position_biases.RelativePositionBiases.num_buckets = %NUM_LEVELS
+depth/relative_position_biases.RelativePositionBiases.num_heads = %NUM_HEADS
+
+# Parameters for temp/relative_position_biases.RelativePositionBiases:
+# ==============================================================================
+temp/relative_position_biases.RelativePositionBiases.max_distance = 128
+temp/relative_position_biases.RelativePositionBiases.num_buckets = 128
+temp/relative_position_biases.RelativePositionBiases.num_heads = %NUM_HEADS
+
+# Parameters for vocab_size/utils.round_vocab_size_to_multiple:
+# ==============================================================================
+vocab_size/utils.round_vocab_size_to_multiple.vocabulary = %VOCABULARY
+
+# Parameters for model.RTSongInferenceEncoderDecoderModel:
+# ==============================================================================
+model.RTSongInferenceEncoderDecoderModel.decode_fn = \
+    @cfg_decoding.decode_with_classifier_free_guidance
+model.RTSongInferenceEncoderDecoderModel.input_vocabulary = %VOCABULARY
+model.RTSongInferenceEncoderDecoderModel.label_smoothing = %LABEL_SMOOTHING
+model.RTSongInferenceEncoderDecoderModel.loss_normalizing_factor = \
+    %LOSS_NORMALIZING_FACTOR
+model.RTSongInferenceEncoderDecoderModel.module = %ARCHITECTURE
+model.RTSongInferenceEncoderDecoderModel.optimizer_def = %OPTIMIZER
+model.RTSongInferenceEncoderDecoderModel.output_vocabulary = %VOCABULARY
+model.RTSongInferenceEncoderDecoderModel.z_loss = %Z_LOSS
+
+# Parameters for seqio.SentencePieceVocabulary:
+# ==============================================================================
+seqio.SentencePieceVocabulary.sentencepiece_model_file = \
+    '/bigstore/t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model'
+
+# Parameters for layer_norm.T5LayerNorm:
+# ==============================================================================
+layer_norm.T5LayerNorm.dtype = %ACTIVATION_DTYPE
+
+# Parameters for decoding.temperature_sample:
+# ==============================================================================
+decoding.temperature_sample.temperature = 1.1
+decoding.temperature_sample.topk = 40
+
+# Parameters for attention_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+attention_kernel_init/linen.initializers.variance_scaling.distribution = 'normal'
+attention_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+attention_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for mlp_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+mlp_kernel_init/linen.initializers.variance_scaling.distribution = \
+    'truncated_normal'
+mlp_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+mlp_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for output_logits_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+output_logits_kernel_init/linen.initializers.variance_scaling.distribution = \
+    'truncated_normal'
+output_logits_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+output_logits_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for relative_position_bias_init/linen.initializers.variance_scaling:
+# ==============================================================================
+relative_position_bias_init/linen.initializers.variance_scaling.distribution = \
+    'uniform'
+relative_position_bias_init/linen.initializers.variance_scaling.mode = 'fan_avg'
+relative_position_bias_init/linen.initializers.variance_scaling.scale = %SCALE

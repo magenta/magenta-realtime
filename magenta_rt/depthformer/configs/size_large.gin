@@ -1,0 +1,15 @@
+include 'size_base.gin'
+include 'posembed.gin'
+
+from __gin__ import dynamic_registration
+from t5x import partitioning
+
+# Architecture overrides
+NUM_ENCODER_LAYERS = 24
+NUM_DECODER_LAYERS = 24
+NUM_HEADS = 16
+HEAD_DIM = 64
+EMBED_DIM = 1024
+MLP_DIM = 2816
+
+partitioning.PjitPartitioner.num_partitions = 4
