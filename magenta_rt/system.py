@@ -176,6 +176,12 @@ class MagentaRTState:
       )
     self._context_tokens = value
 
+  def to_dict(self) -> dict:
+    return {
+        "context_tokens": self.context_tokens.tolist(),
+        "chunk_index": self.chunk_index,
+    }
+
   def update(self, chunk_tokens: np.ndarray):
     """Updates the state with the tokens from the next chunk."""
     if chunk_tokens.dtype != np.int32:
@@ -202,6 +208,13 @@ class MagentaRTState:
     )
     self._chunk_index += 1
 
+  @classmethod
+  def from_dict(cls, config: MagentaRTConfiguration, data: dict) -> "MagentaRTState":
+    return cls(
+        config=config,
+        context_tokens=np.array(data["context_tokens"], dtype=np.int32),
+        chunk_index=data["chunk_index"],
+    )
 
 class MagentaRTBase(abc.ABC):
   """Magenta RT abstract base class."""
@@ -386,7 +399,7 @@ class MagentaRTT5X(MagentaRTBase):
       *args,
       tag: str = "large",
       guidance_weight: float = 5.0,
-      temperature: float = 1.1,
+      temperature: float = 1.3,
       topk: int = 40,
       device: Optional[str | _DeviceParams] = None,
       checkpoint_dir: Optional[str] = None,

@@ -29,6 +29,26 @@ which runs in real time on freely available TPUs! Here is a quick
 If you have a machine with a TPU or GPU, you may also following the installation
 instructions below for running locally.
 
+## Quick start w/ Docker
+
+The following commands will build a GPU-compatible Docker container and launch a
+Magenta RT model server which can be used to generate chunks via HTTP requests:
+
+```sh
+docker build -f Dockerfile.gpu -t magenta/magenta-realtime .
+docker build \
+  -f examples/docker_generation/Dockerfile \
+  -t magenta-realtime-example \
+  examples/docker_generation
+docker run \
+  -p 8000:8000 \
+  -v $(pwd)/magenta_rt:/magenta-realtime/magenta_rt \
+  --gpus device=0 \
+  magenta-realtime-example
+```
+
+Run `python examples/docker_generation/client.py --text_style "synthwave"` to generate!
+
 ## Local installation
 
 Install the latest version:

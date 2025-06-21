@@ -29,7 +29,10 @@ import tensorflow_hub as hub
 def _globally_disable_gpu_memory_growth():
   """Prevents TF from consuming all available GPU memory by default."""
   for gpu in tf.config.list_physical_devices('GPU'):
-    tf.config.experimental.set_memory_growth(gpu, True)
+    try:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError:
+      pass
 
 
 @functools.cache

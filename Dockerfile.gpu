@@ -1,0 +1,52 @@
+ARG BASE_IMAGE=nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
+FROM ${BASE_IMAGE}
+
+WORKDIR /magenta-realtime
+
+# Install python3 and pip
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN python -m pip install --upgrade pip
+
+# Install git
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cache model checkpoints
+ENV GOOGLE_APPLICATION_CREDENTIALS=""
+ENV GOOGLE_CLOUD_PROJECT=""
+ENV MAGENTA_RT_CACHE_DIR=/magenta-realtime/cache
+ENV MAGENTA_RT_LIB_DIR=/magenta-realtime/magenta_rt
+RUN mkdir -p $MAGENTA_RT_CACHE_DIR
+RUN mkdir -p $MAGENTA_RT_LIB_DIR
+RUN pip install --no-cache-dir absl-py google-cloud-storage tqdm
+COPY magenta_rt/path.py $MAGENTA_RT_LIB_DIR/path.py
+COPY magenta_rt/asset.py $MAGENTA_RT_LIB_DIR/asset.py
+COPY magenta_rt/fetch_asset.py $MAGENTA_RT_LIB_DIR/fetch_asset.py
+RUN python -m magenta_rt.fetch_asset --asset=README.md
+RUN ls -la $MAGENTA_RT_CACHE_DIR/assets/README.md || exit 1
+RUN python -m magenta_rt.fetch_asset --asset=savedmodels/musiccoca_mv212f_cpu_compat --is_dir
+RUN python -m magenta_rt.fetch_asset --asset=savedmodels/musiccoca_mv212_quant --is_dir
+RUN python -m magenta_rt.fetch_asset --asset=savedmodels/ssv2_48k_stereo/encoder --is_dir
+RUN python -m magenta_rt.fetch_asset --asset=savedmodels/ssv2_48k_stereo/decoder --is_dir
+RUN python -m magenta_rt.fetch_asset --asset=savedmodels/ssv2_48k_stereo/quantizer --is_dir
+RUN python -m magenta_rt.fetch_asset --asset=checkpoints/llm_large_x3047_c1860k --is_dir
+
+# Install dependencies
+COPY setup.py .
+COPY pyproject.toml .
+RUN python -m pip install -e .[gpu]
+RUN python -m pip uninstall -y tensorflow tf-nightly tensorflow-cpu tf-nightly-cpu tensorflow-tpu tf-nightly-tpu tensorflow-hub tf-hub-nightly tensorflow-text tensorflow-text-nightly
+RUN python -m pip install --no-cache-dir tf-nightly tensorflow-text-nightly tf-hub-nightly
+
+# Copy library
+COPY magenta_rt/*.py magenta_rt/
+COPY magenta_rt/depthformer magenta_rt/depthformer
+COPY test/* test/
+
+CMD ["python", "test/magenta_rt_end2end_test.py"]

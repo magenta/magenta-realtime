@@ -23,6 +23,7 @@ import shutil
 from typing import Optional
 
 from absl import logging
+import google.auth.exceptions
 from google.cloud import storage
 import tqdm
 
@@ -55,7 +56,10 @@ def set_cache_dir(cache_dir: pathlib.Path | str):
 
 @functools.cache
 def _get_bucket(bucket_name: str) -> storage.Bucket:
-  storage_client = storage.Client()
+  try:
+    storage_client = storage.Client()
+  except google.auth.exceptions.GoogleAuthError:
+    storage_client = storage.Client.create_anonymous_client()
   return storage_client.bucket(bucket_name)
 
 
