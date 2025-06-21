@@ -153,21 +153,30 @@ A technical report is coming soon. For now, please cite our blog post:
 
 ## License and disclaimer
 
+Magenta RealTime is offered under a combination of licenses: the codebase is
+licensed under
+[Apache 2.0](https://github.com/magenta/magenta-realtime/blob/main/LICENSE),
+and the model weights under
+[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode).
+
+In addition, we specify the following usage terms:
+
 Copyright 2025 Google LLC
 
-All software is licensed under the Apache License, Version 2.0 (Apache 2.0); you
-may not use this file except in compliance with the Apache 2.0 license. You may
-obtain a copy of the Apache 2.0 license at:
-https://www.apache.org/licenses/LICENSE-2.0
+Use these materials responsibly and do not generate content, including outputs,
+that infringe or violate the rights of others, including rights in copyrighted
+content.
 
-All other materials are licensed under the Creative Commons Attribution 4.0
-International License (CC-BY). You may obtain a copy of the CC-BY license at:
-https://creativecommons.org/licenses/by/4.0/legalcode
+Google claims no rights in outputs you generate using Magenta RealTime. You and
+your users are solely responsible for outputs and their subsequent uses.
 
 Unless required by applicable law or agreed to in writing, all software and
 materials distributed here under the Apache 2.0 or CC-BY licenses are
 distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
 either express or implied. See the licenses for the specific language governing
-permissions and limitations under those licenses.
-
-This is not an official Google product.
+permissions and limitations under those licenses. You are solely responsible for
+determining the appropriateness of using, reproducing, modifying, performing,
+displaying or distributing the software and materials, and any outputs, and
+assume any and all risks associated with your use or distribution of any of the
+software and materials, and any outputs, and your exercise of rights and
+permissions under the licenses.
