@@ -30,7 +30,7 @@ from . import path as mrt_path
 
 GCP_BUCKET_NAME = 'magenta-rt-public'
 HF_REPO_NAME = 'google/magenta-realtime'
-DEFAULT_SOURCE = 'gcp'
+DEFAULT_SOURCE = 'hf'
 
 if 'MAGENTA_RT_CACHE_DIR' in os.environ:
   _CACHE_DIR = pathlib.Path(os.environ['MAGENTA_RT_CACHE_DIR'])
