@@ -19,10 +19,12 @@ import base64
 import concurrent.futures
 import functools
 import importlib
+from typing import Callable
 import uuid
 import ipywidgets as ipw
 import numpy as np
 import resampy
+from . import prompt_types
 from . import utils
 
 colab = importlib.import_module('google.colab')
@@ -135,7 +137,12 @@ class AudioPrompt(Prompt):
     if self.parameter_callback is None:
       return
 
-    self.parameter_callback(dict(name='value', new=audio))
+    self.parameter_callback(
+        dict(
+            name='value',
+            new=prompt_types.AudioPrompt(value=audio),
+        )
+    )
 
   def get_widget(self):
     """Shows the widget in the current cell."""
@@ -151,6 +158,67 @@ class AudioPrompt(Prompt):
   @property
   def prompt_value(self):
     return self
+
+
+class LiveAudioPrompt(Prompt):
+  """Live audio prompt widget."""
+
+  def __init__(
+      self,
+      audio_embedding_fn: Callable[[np.ndarray], np.ndarray],
+      sample_rate: int = 16_000,
+      buffer_seconds: int = 10,
+      trigger_embedding_every_n_seconds: int = 4,
+  ):
+    super().__init__()
+    # A text box that looks like the text prompts, but with input disabled.
+    self.text = ipw.Text(
+        value=f'Input Audio (last {buffer_seconds}s)',
+        layout=ipw.Layout(
+            display='flex',
+            width='auto',
+            flex='16 1 0%',
+        ),
+        disabled=True,
+    )
+
+    self._parameter_callback = None
+    self._audio_embedding_fn = audio_embedding_fn
+
+    self._input_audio = np.zeros(
+        (sample_rate * buffer_seconds,), dtype=np.float32
+    )
+    self._sample_rate = sample_rate
+    self._trigger_embedding_every_n_seconds = trigger_embedding_every_n_seconds
+    self._num_new_seconds = 0
+    self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    self.value = None
+
+  def observe(self, callback):
+    self.parameter_callback = callback
+
+  @property
+  def prompt_value(self):
+    return self
+
+  def update_embedding(self):
+    embedding = prompt_types.EmbeddingPrompt(
+        value=self._audio_embedding_fn(self._input_audio)
+    )
+    self.parameter_callback(dict(name='value', new=embedding))
+
+  def update_audio_input(self, audio: np.ndarray) -> None:
+    assert audio.ndim == 1, 'Audio must be 1D.'
+    self._input_audio = np.concatenate(
+        [self._input_audio, audio],
+        axis=-1,
+    )[-len(self._input_audio) :]
+
+    self._num_new_seconds += len(audio) / self._sample_rate
+    if self._num_new_seconds >= self._trigger_embedding_every_n_seconds:
+      self._num_new_seconds -= self._trigger_embedding_every_n_seconds
+      self._executor.submit(self.update_embedding)
 
 
 def area(name: str, *childrens: ipw.Widget) -> ipw.Widget:
