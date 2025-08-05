@@ -32,7 +32,7 @@ t5_architecture.EncoderDecoder.decoder_factory = %DECODER_FACTORY
 t5_architecture.Decoder.token_embedder_factory = %DECODER_TOKEN_EMBEDDER_FACTORY
 
 # Set params for all models
-model.RTSongInferenceEncoderDecoderModel:
+model.MagentaRTEncoderDecoderModel:
   module = %ARCHITECTURE
   input_vocabulary = %VOCABULARY
   output_vocabulary = %VOCABULARY

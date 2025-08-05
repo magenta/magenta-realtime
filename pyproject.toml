@@ -23,6 +23,7 @@ dependencies = [
   # TODO(kehanghan): Update to latest JAX once tf2jax is updated.
   "jax==0.6.2",
   "jaxlib==0.6.2",
+  "librosa",
   "numpy",
   "resampy",
   "requests",

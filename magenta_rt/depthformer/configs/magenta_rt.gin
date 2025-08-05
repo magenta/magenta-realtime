@@ -8,6 +8,6 @@ SPLIT_POINT = 0
 MAX_SEQ_LEN = 1006
 NUM_LEVELS = 16
 NUM_INPUT_LEVELS = 4
-MODEL = @model.RTSongInferenceEncoderDecoderModel()
+MODEL = @model.MagentaRTEncoderDecoderModel()
 
 seqio.PassThroughVocabulary.size = 29698

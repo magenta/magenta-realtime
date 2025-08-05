@@ -17,7 +17,7 @@
 
 import importlib
 import sys
-from typing import Any, Callable, Mapping, MutableMapping, Optional
+from typing import Any, Mapping, MutableMapping, Optional
 
 import gin
 import jax
@@ -31,8 +31,8 @@ import t5x.partitioning
 from .. import path
 
 
-class RTSongInferenceEncoderDecoderModel(t5x.models.EncoderDecoderModel):
-  """Wrapper around EncoderDecoderModel for inference on Magenta RT models."""
+class MagentaRTEncoderDecoderModel(t5x.models.EncoderDecoderModel):
+  """Wrapper around EncoderDecoderModel for inference and finetuning on Magenta RT models."""
 
   def predict_batch_with_aux(
       self,
@@ -87,15 +87,36 @@ def _parse_global_gin_config(
 def load_pretrained_model(
     checkpoint_dir: str,
     size: str = 'base',
-    default_guidance_weight: float = 4.0,
-    default_temperature: float = 1.1,
-    default_topk: int = 40,
     batch_size: int = 1,
     num_partitions: Optional[int] = 1,
     model_parallel_submesh: Optional[tuple[int, int, int, int]] = None,
     gin_overrides: Optional[str] = '',
-) -> Callable:  # pylint: disable=g-bare-generic
-  """Loads a pretrained Magenta RT t5x.InteractiveModel."""
+    output_dir: Optional[str] = '/tmp',
+) -> tuple[
+    Mapping[str, int],
+    t5x.partitioning.PjitPartitioner,
+    t5x.interactive_model.InteractiveModel,
+]:
+  """Loads a pretrained Magenta RT t5x.InteractiveModel.
+
+  Args:
+    checkpoint_dir: directory containing the checkpoint to start finetuning
+      from.
+    size: size of the model to load. Must be 'base' or 'large'.
+    batch_size: number of examples per batch for finetuning.
+    num_partitions: an integer that specifies the size of the model parallel
+      submesh to be used in the partitioner. Mutually exclusive with
+      `model_parallel_submesh`.
+    model_parallel_submesh: a 4-tuple that specifies the `(x, y, z, c)` submesh
+      model-parallel device tile to be used in the partitioner. Mutually
+      exclusive with `num_partitions`.
+    gin_overrides: gin parameters to override.
+    output_dir: path to directory where we will write temporary files and final
+      results.
+
+  Returns:
+    A tuple of (task_feature_lengths, partitioner, interactive_model).
+  """
   # Check that one of `model_parallel_submesh` or `num_partitions` specified.
   if (model_parallel_submesh, num_partitions).count(None) != 1:
     raise ValueError(
@@ -130,7 +151,7 @@ def load_pretrained_model(
   interactive_model = t5x.interactive_model.InteractiveModel(
       batch_size=batch_size,
       task_feature_lengths=task_feature_lengths,
-      output_dir='/tmp',
+      output_dir=output_dir,
       partitioner=partitioner,
       model=model,
       dtype=None,
@@ -147,7 +168,19 @@ def load_pretrained_model(
           ),
       },
   )
+  return task_feature_lengths, partitioner, interactive_model
 
+
+def get_infer_fn(
+    interactive_model: t5x.interactive_model.InteractiveModel,
+    partitioner: t5x.partitioning.PjitPartitioner,
+    batch_size: int,
+    task_feature_lengths: Mapping[str, int],
+    default_guidance_weight: float,
+    default_temperature: float,
+    default_topk: int,
+):
+  """Returns a partitioned inference function for the interactive model."""
   # Create the inference function.
   def _infer_fn(params, batch, decoder_params, seed):
     assert isinstance(interactive_model.model, t5x.models.EncoderDecoderModel)

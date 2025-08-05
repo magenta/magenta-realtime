@@ -37,6 +37,8 @@ class TestMagentaRT(absltest.TestCase):
     self.assertEqual(config.vocab_style_offset, 17410)
     self.assertEqual(config.vocab_style_size, 6144)
     self.assertEqual(config.vocab_style_offset + config.vocab_style_size, 23554)
+    self.assertEqual(config.vocab_size, 23554)
+    self.assertEqual(config.vocab_size_pretrained, 29698)
 
   def test_magenta_rt_configuration_valid(self):
     config = system.MagentaRTConfiguration()

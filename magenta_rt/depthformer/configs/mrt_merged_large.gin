@@ -35,7 +35,7 @@ LABEL_SMOOTHING = 0.0
 LOSS_NORMALIZING_FACTOR = None
 MAX_SEQ_LEN = 1006
 MLP_DIM = 2816
-MODEL = @model.RTSongInferenceEncoderDecoderModel()
+MODEL = @model.MagentaRTEncoderDecoderModel()
 NUM_DECODER_LAYERS = 24
 NUM_DEPTH_LAYERS = 4
 NUM_EMBEDDINGS = @vocab_size/utils.round_vocab_size_to_multiple()
@@ -270,18 +270,18 @@ temp/relative_position_biases.RelativePositionBiases.num_heads = %NUM_HEADS
 # ==============================================================================
 vocab_size/utils.round_vocab_size_to_multiple.vocabulary = %VOCABULARY
 
-# Parameters for model.RTSongInferenceEncoderDecoderModel:
+# Parameters for model.MagentaRTEncoderDecoderModel:
 # ==============================================================================
-model.RTSongInferenceEncoderDecoderModel.decode_fn = \
+model.MagentaRTEncoderDecoderModel.decode_fn = \
     @cfg_decoding.decode_with_classifier_free_guidance
-model.RTSongInferenceEncoderDecoderModel.input_vocabulary = %VOCABULARY
-model.RTSongInferenceEncoderDecoderModel.label_smoothing = %LABEL_SMOOTHING
-model.RTSongInferenceEncoderDecoderModel.loss_normalizing_factor = \
+model.MagentaRTEncoderDecoderModel.input_vocabulary = %VOCABULARY
+model.MagentaRTEncoderDecoderModel.label_smoothing = %LABEL_SMOOTHING
+model.MagentaRTEncoderDecoderModel.loss_normalizing_factor = \
     %LOSS_NORMALIZING_FACTOR
-model.RTSongInferenceEncoderDecoderModel.module = %ARCHITECTURE
-model.RTSongInferenceEncoderDecoderModel.optimizer_def = %OPTIMIZER
-model.RTSongInferenceEncoderDecoderModel.output_vocabulary = %VOCABULARY
-model.RTSongInferenceEncoderDecoderModel.z_loss = %Z_LOSS
+model.MagentaRTEncoderDecoderModel.module = %ARCHITECTURE
+model.MagentaRTEncoderDecoderModel.optimizer_def = %OPTIMIZER
+model.MagentaRTEncoderDecoderModel.output_vocabulary = %VOCABULARY
+model.MagentaRTEncoderDecoderModel.z_loss = %Z_LOSS
 
 # Parameters for seqio.SentencePieceVocabulary:
 # ==============================================================================

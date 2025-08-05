@@ -96,6 +96,42 @@ class TestWaveform(absltest.TestCase):
         )
     )
 
+  def test_peak_normalize(self):
+    silence = audio.Waveform(
+        np.zeros((self.sample_rate * 10, 2), dtype=np.float32),
+        sample_rate=self.sample_rate,
+    )
+    self.assertEqual(silence.peak_amplitude, 0)
+    silence_norm = silence.peak_normalize()
+    self.assertEqual(silence.peak_amplitude, 0)
+    self.assertEqual(silence_norm.peak_amplitude, 0)
+
+  def test_amp_to_db(self):
+    self.assertAlmostEqual(audio.amp_to_db(0.0), float("-inf"))
+    self.assertAlmostEqual(audio.amp_to_db(0.01), -40.0)
+    self.assertAlmostEqual(audio.amp_to_db(0.1), -20.0)
+    self.assertAlmostEqual(audio.amp_to_db(1), 0.0)
+    self.assertAlmostEqual(audio.amp_to_db(10), 20.0)
+    self.assertAlmostEqual(audio.amp_to_db(0.01, amp_ref=0.1), -20.0)
+    with self.assertRaises(ValueError):
+      audio.amp_to_db(-1.0)
+    with self.assertRaises(ValueError):
+      audio.amp_to_db(1.0, amp_ref=0.0)
+    with self.assertRaises(ValueError):
+      audio.amp_to_db(1.0, amp_ref=-1.0)
+
+  def test_db_to_amp(self):
+    self.assertAlmostEqual(audio.db_to_amp(float("-inf")), 0.0)
+    self.assertAlmostEqual(audio.db_to_amp(-40.0), 0.01)
+    self.assertAlmostEqual(audio.db_to_amp(-20.0), 0.1)
+    self.assertAlmostEqual(audio.db_to_amp(0.0), 1.0)
+    self.assertAlmostEqual(audio.db_to_amp(20.0), 10.0)
+    self.assertAlmostEqual(audio.db_to_amp(-20.0, amp_ref=0.1), 0.01)
+    with self.assertRaises(ValueError):
+      audio.db_to_amp(0.0, amp_ref=0.0)
+    with self.assertRaises(ValueError):
+      audio.db_to_amp(0.0, amp_ref=-1.0)
+
   def test_from_file_str(self):
     with tempfile.NamedTemporaryFile(suffix=".wav") as f:
       self.waveform.write(f.name, subtype="FLOAT")

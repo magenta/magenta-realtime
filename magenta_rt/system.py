@@ -133,6 +133,16 @@ class MagentaRTConfiguration:
   def vocab_style_size(self) -> int:
     return self.encoder_style_rvq_depth * self.style_rvq_codebook_size
 
+  @property
+  def vocab_size(self) -> int:
+    return self.vocab_style_offset + self.vocab_style_size
+
+  @property
+  # Pre-trained model has larger vocab size (29698), but tokens beyond
+  # vocab_size (23554) are unused
+  def vocab_size_pretrained(self) -> int:
+    return 29698
+
 
 class MagentaRTState:
   """State management for Magenta RT."""
@@ -468,15 +478,23 @@ class MagentaRTT5X(MagentaRTBase):
     else:
       checkpoint_dir = self._checkpoint_dir
     batch_size, num_partitions, model_parallel_submesh = self._device_params
-    return model.load_pretrained_model(
-        checkpoint_dir=checkpoint_dir,
-        size=self._tag,
+    task_feature_lengths, partitioner, interactive_model = (
+        model.load_pretrained_model(
+            checkpoint_dir=checkpoint_dir,
+            size=self._tag,
+            batch_size=batch_size,
+            num_partitions=num_partitions,
+            model_parallel_submesh=model_parallel_submesh,
+        )
+    )
+    return model.get_infer_fn(
+        interactive_model=interactive_model,
+        partitioner=partitioner,
+        batch_size=batch_size,
+        task_feature_lengths=task_feature_lengths,
         default_guidance_weight=self._guidance_weight,
         default_temperature=self._temperature,
         default_topk=self._topk,
-        batch_size=batch_size,
-        num_partitions=num_partitions,
-        model_parallel_submesh=model_parallel_submesh,
     )
 
   def warm_start(self):
