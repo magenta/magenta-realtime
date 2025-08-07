@@ -10,6 +10,7 @@ library_name: magenta-realtime
 **Resources**:
 
 -   [Blog Post](https://g.co/magenta/rt)
+-   [Paper](https://arxiv.org/abs/2508.04651)
 -   [Colab Demo](https://colab.research.google.com/github/magenta/magenta-realtime/blob/main/notebooks/Magenta_RT_Demo.ipynb)
 -   [Repository](https://github.com/magenta/magenta-realtime)
 -   [HuggingFace](https://huggingface.co/google/magenta-realtime)
@@ -58,8 +59,8 @@ Colab TPUs.
 ### System Components
 
 Magenta RealTime is composed of three components: SpectroStream, MusicCoCa, and
-an LLM. A full technical report is forthcoming that will explain each component
-in more detail.
+an LLM. A full technical report with more details on each component is
+[here](https://arxiv.org/abs/2508.04651).
 
 1.  **SpectroStream** is a discrete audio codec that converts stereo 48kHz audio
     into tokens, building on the SoundStream RVQ codec from
@@ -209,17 +210,15 @@ report.
 
 ## Citation
 
-A technical report is forthcoming. For now, please cite our
-[blog post](https://g.co/magenta/rt).
+Please cite our technical report:
 
 **BibTeX:**
 
 ```
-@article{magenta_rt,
-    title={Magenta RealTime},
-    url={https://g.co/magenta/rt},
-    publisher={Google DeepMind},
-    author={Lyria Team},
+@article{gdmlyria2025live,
+    title={Live Music Models},
+    author={Caillon, Antoine and McWilliams, Brian and Tarakajian, Cassie and Simon, Ian and Manco, Ilaria and Engel, Jesse and Constant, Noah and Li, Pen and Denk, Timo I. and Lalama, Alberto and Agostinelli, Andrea and Huang, Anna and Manilow, Ethan and Brower, George and Erdogan, Hakan and Lei, Heidi and Rolnick, Itai and Grishchenko, Ivan and Orsini, Manu and Kastelic, Matej and Zuluaga, Mauricio and Verzetti, Mauro and Dooley, Michael and Skopek, Ondrej and Ferrer, Rafael and Borsos, Zal{\'a}n and van den Oord, {\"A}aron and Eck, Douglas and Collins, Eli and Baldridge, Jason and Hume, Tom and Donahue, Chris and Han, Kehang and Roberts, Adam},
+    journal={arXiv:2508.04651},
     year={2025}
 }
 ```

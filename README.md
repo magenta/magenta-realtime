@@ -1,17 +1,15 @@
 # Magenta RT: Streaming music generation!
 
-Magenta RealTime is a Python library for streaming music audio generation on
-your local device. It is the open source / on device companion to
+Magenta RealTime is a Python library for live music audio generation on your
+local device. It is the open source / on device companion to
 [MusicFX DJ Mode](https://labs.google/fx/tools/music-fx-dj) and the
 [Lyria RealTime API](https://ai.google.dev/gemini-api/docs/music-generation).
+Magenta RT allows for both [text](https://www.youtube.com/watch?v=Ae1Kz2zmh9M)
+and [audio](https://www.youtube.com/watch?v=vHIf2UKXmp4) prompting.
 
-Our current models already
-allow both [text](https://www.youtube.com/watch?v=Ae1Kz2zmh9M) and
-[audio](https://www.youtube.com/watch?v=vHIf2UKXmp4) prompting. We will have
-[more to share](#coming-soon) in the coming weeks including a technical report
-and additional features!
-
-See our [blog post](https://g.co/magenta/rt) and
+See our
+[blog post](https://g.co/magenta/rt),
+[paper](https://arxiv.org/abs/2508.04651), and
 [model card](https://github.com/magenta/magenta-realtime/blob/main/MODEL.md) for
 more info.
 
@@ -27,6 +25,10 @@ The fastest way to get started with Magenta RT is to try our official
 [Colab Demo](https://colab.research.google.com/github/magenta/magenta-realtime/blob/main/notebooks/Magenta_RT_Demo.ipynb)
 which runs in real time on freely available TPUs! Here is a quick
 [video walkthrough](https://www.youtube.com/watch?v=SVTuEdeepVs).
+
+**Update**: We now have two additional Colab demos supporting
+[live audio input](https://colab.research.google.com/github/magenta/magenta-realtime/blob/main/notebooks/Magenta_RT_Audio_Injection.ipynb)
+and [customization via finetuning](https://colab.research.google.com/github/magenta/magenta-realtime/blob/main/notebooks/Magenta_RT_Finetune.ipynb)!
 
 If you have a machine with a TPU or GPU, you may also following the installation
 instructions below for running locally.
@@ -129,26 +131,17 @@ python test/spectrostream_end2end_test.py
 python test/magenta_rt_end2end_test.py
 ```
 
-## Coming soon!
-
-The following is a list of features we have planned for the near future (subject
-to change). Please open an issue if there are features you would like to see, or
-open a pull request if you would like to contribute!
-
--   Technical report
--   Colab for fine tuning
--   Colab for conditioning on real-time audio input
-
 ## Citing this work
 
-A technical report is coming soon. For now, please cite our blog post:
+Please cite our [technical report](https://arxiv.org/abs/2508.04651):
+
+**BibTeX:**
 
 ```
-@article{magenta_rt,
-    title={Magenta RealTime},
-    url={https://g.co/magenta/rt},
-    publisher={Google DeepMind},
-    author={Lyria Team},
+@article{gdmlyria2025live,
+    title={Live Music Models},
+    author={Caillon, Antoine and McWilliams, Brian and Tarakajian, Cassie and Simon, Ian and Manco, Ilaria and Engel, Jesse and Constant, Noah and Li, Pen and Denk, Timo I. and Lalama, Alberto and Agostinelli, Andrea and Huang, Anna and Manilow, Ethan and Brower, George and Erdogan, Hakan and Lei, Heidi and Rolnick, Itai and Grishchenko, Ivan and Orsini, Manu and Kastelic, Matej and Zuluaga, Mauricio and Verzetti, Mauro and Dooley, Michael and Skopek, Ondrej and Ferrer, Rafael and Borsos, Zal{\'a}n and van den Oord, {\"A}aron and Eck, Douglas and Collins, Eli and Baldridge, Jason and Hume, Tom and Donahue, Chris and Han, Kehang and Roberts, Adam},
+    journal={arXiv:2508.04651},
     year={2025}
 }
 ```
