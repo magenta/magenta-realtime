@@ -225,6 +225,8 @@ class TemporalDecoderStack(nn.Module):
       enable_dropout: bool = False,
       decode: bool = False,
       max_decode_length: Optional[int] = None,
+      prefill: bool = False,
+      prefill_lengths: Optional[Array] = None,
       init_cache: bool = False,
       **kwargs,
   ):
@@ -243,6 +245,9 @@ class TemporalDecoderStack(nn.Module):
         length. Note that this is only used for defining the relative position
         embedding parameters. cache, lengths are inferred from the mask if not
         provided.
+      prefill: Whether to run a partial sequence to prefill the cache.
+      prefill_lengths: The length of each partial sequence we are filling in the
+        cache, lengths are inferred from the mask if not provided.
       init_cache: Sets whether we are initialising the decoding cache.
       **kwargs: Optional keyword arguments to pass to
         decode_from_continuous_inputs.
@@ -299,6 +304,8 @@ class TemporalDecoderStack(nn.Module):
         enable_dropout=enable_dropout,
         decode=decode,
         max_decode_length=max_decode_length,
+        prefill=prefill,
+        prefill_lengths=prefill_lengths,
     )
     return temporal_context
 
@@ -470,6 +477,8 @@ class DepthformerDecoderStack(nn.Module):
       enable_dropout: bool = False,
       decode: bool = False,
       max_decode_length: Optional[int] = None,
+      prefill: bool = False,
+      prefill_lengths: Optional[Array] = None,
       **kwargs,
   ):
     # Reshape temporal decoder inputs from [B, T*Q, D] -> [B, T, Q, D]
@@ -500,6 +509,8 @@ class DepthformerDecoderStack(nn.Module):
         enable_dropout=enable_dropout,
         decode=decode,
         max_decode_length=temporal_max_decode_length,
+        prefill=prefill,
+        prefill_lengths=prefill_lengths,
     )
 
     pre_logits = self.depth_decoder(
@@ -724,6 +735,8 @@ class PeriodicCallableTemporalDecoder(nn.Module):
       enable_dropout: bool = False,
       decode: bool = False,
       max_decode_length: Optional[int] = None,
+      prefill: bool = False,
+      prefill_lengths: Optional[Array] = None,
       **kwargs,
   ):
     """Runs the temporal decoder stack periodically.
@@ -740,6 +753,9 @@ class PeriodicCallableTemporalDecoder(nn.Module):
       max_decode_length: An optional integer specifying the maximum decoding
         length. Note that this is only used for defining the relative position
         embedding parameters.
+      prefill: Whether to run a partial sequence to prefill the cache.
+      prefill_lengths: The length of each partial sequence we are filling in the
+        cache, lengths are inferred from the mask if not provided.
       **kwargs: Optional keyword arguments to pass to
         decode_from_continuous_inputs.
 
@@ -775,8 +791,7 @@ class PeriodicCallableTemporalDecoder(nn.Module):
       rngs = {'dropout': self.make_rng('dropout')}
     else:
       rngs = {}
-
-    if not decode:
+    if not decode and not prefill:
       # This is the default train-time behaviour.
       # Run the module with empty cache
       return self._module.apply(
@@ -837,7 +852,28 @@ class PeriodicCallableTemporalDecoder(nn.Module):
       cached_output = self.variable(
           'cache', 'cached_output', jnp.zeros, dummy_shapes, y.dtype
       )
-
+    elif prefill:
+      # We are prefill and have already initialized the cache.
+      y, module_variables = self._module.apply(
+          {
+              'params': params,
+              'params_axes': params_axes,
+              'cache': module_scope.variables()['cache'],
+          },
+          embedded_inputs,
+          encoded=encoder_outputs,
+          decoder_mask=decoder_mask,
+          encoder_decoder_mask=encoder_decoder_mask,
+          logit_mask=logit_mask,
+          enable_dropout=enable_dropout,
+          decode=decode,
+          max_decode_length=max_decode_length,
+          prefill=prefill,
+          prefill_lengths=prefill_lengths,
+          rngs=rngs,
+          mutable=['cache'],
+      )
+      module_variables = module_variables['cache']
     else:
       if self.mean_pool_input:
         cached_input = self.variable('cache', 'cached_input')
@@ -915,7 +951,7 @@ class PeriodicCallableTemporalDecoder(nn.Module):
     # It seems important to do this after _copy_to_scope instead of the
     # opposite, otherwise the following 2 values get wiped out by the
     # _copy_to_scope call.
-    if is_initialized:
+    if is_initialized and decode:
       # The cache initialization time is considered as a "dummy" step.
       # The counter is only increased when doing real steps.
       call_counter.value = call_counter.value + 1

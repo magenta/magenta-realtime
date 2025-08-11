@@ -16,6 +16,7 @@
 """Custom utilties for t5x Models and decoding."""
 
 import importlib
+import pathlib
 import sys
 from typing import Any, Mapping, MutableMapping, Optional
 
@@ -65,7 +66,8 @@ _GIN_CONFIGS_DIR = path.MODULE_DIR / 'depthformer' / 'configs'
 
 
 def _parse_global_gin_config(
-    size: str = 'base', overrides: str = ''
+    size: str = 'base', overrides: str = '',
+    gin_configs_dir: pathlib.Path = _GIN_CONFIGS_DIR,
 ) -> tuple[Any, dict[str, int]]:
   """Parses the global gin config and returns the model and task lengths."""
   if size not in ['base', 'large']:
@@ -76,7 +78,7 @@ def _parse_global_gin_config(
   # gin.add_config_file_search_path(str(_GIN_CONFIGS_DIR))
   # for config_file in ['size_base.gin', 'depthformer.gin', 'magenta_rt.gin']:
   # gin.parse_config_file(str(_GIN_CONFIGS_DIR / config_file))
-  gin.parse_config_file(str(_GIN_CONFIGS_DIR / f'mrt_merged_{size}.gin'))
+  gin.parse_config_file(str(gin_configs_dir / f'mrt_merged_{size}.gin'))
   gin.parse_config(overrides)
   return (
       gin.get_configurable('MODEL/macro')(),
@@ -91,6 +93,7 @@ def load_pretrained_model(
     num_partitions: Optional[int] = 1,
     model_parallel_submesh: Optional[tuple[int, int, int, int]] = None,
     gin_overrides: Optional[str] = '',
+    gin_configs_dir: pathlib.Path = _GIN_CONFIGS_DIR,
     output_dir: Optional[str] = '/tmp',
 ) -> tuple[
     Mapping[str, int],
@@ -111,6 +114,8 @@ def load_pretrained_model(
       model-parallel device tile to be used in the partitioner. Mutually
       exclusive with `num_partitions`.
     gin_overrides: gin parameters to override.
+    gin_configs_dir: directory containing the gin configs. Defaults to
+      `_GIN_CONFIGS_DIR` in this module.
     output_dir: path to directory where we will write temporary files and final
       results.
 
@@ -125,7 +130,9 @@ def load_pretrained_model(
     )
 
   # Parse the global gin config.
-  model, task_feature_lengths = _parse_global_gin_config(size, gin_overrides)
+  model, task_feature_lengths = _parse_global_gin_config(
+      size, gin_overrides, gin_configs_dir
+  )
 
   # TODO(chrisdonahue): Relax this assertion to support other sizes in future.
   # 1006 = 10 seconds x 25 Hz x 4 levels + 6 style tokens

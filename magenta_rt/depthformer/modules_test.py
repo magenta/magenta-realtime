@@ -220,19 +220,19 @@ class EncoderDecoderTest(parameterized.TestCase):
     self.initial_vars = self.model.get_initial_variables(
         rng=rng_key, input_shapes=input_shapes
     )
-
-    self.init_cache, _ = self.model._compute_kv_cache(
-        self.initial_vars['params'],
-        self.input_batch['encoder_input_tokens'],
-        self.input_batch['decoder_input_tokens'],
-        self.input_batch['decoder_input_tokens'],
-    )
-
     self.encoded_inputs = self.model.module.apply(
         {'params': self.initial_vars['params']},
         self.input_batch['encoder_input_tokens'],
         enable_dropout=False,
         method=self.model.module.encode,
+    )
+
+    self.init_cache, _ = self.model._compute_kv_cache(
+        self.initial_vars['params'],
+        self.encoded_inputs,
+        self.input_batch['encoder_input_tokens'],
+        jnp.zeros_like(self.input_batch['decoder_input_tokens']),
+        prefill_decoder_prompt=True,
     )
 
   def test_cache_reset(self):
@@ -285,7 +285,7 @@ class EncoderDecoderTest(parameterized.TestCase):
         'decoder_input_tokens': self.input_batch['decoder_input_tokens'],
     }
     decodes, _ = self.model.predict_batch_with_aux(
-        self.initial_vars['params'], decode_batch
+        self.initial_vars['params'], decode_batch, rng=random.PRNGKey(42)
     )
 
     chex.assert_equal_shape([decodes, self.input_batch['decoder_input_tokens']])
