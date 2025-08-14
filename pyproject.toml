@@ -36,7 +36,7 @@ dependencies = [
   "tensorflow-text-nightly",
   "tf-nightly",
   "tf-hub-nightly",
-  "tf2jax",
+  "tf2jax==0.3.7",
   "tqdm",
   "typing-extensions",
 ]
