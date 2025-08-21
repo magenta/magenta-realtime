@@ -374,7 +374,7 @@ class MusicCoCaV212F(MusicCoCaBase):
   def _encoder(self) -> Any:
     with tf.device('/cpu:0'):
       return utils.load_model_cached(
-          'hub',
+          'tf',
           asset.fetch(self._encoder_path, is_dir=True),
       )
 

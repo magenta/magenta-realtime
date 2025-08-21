@@ -23,7 +23,6 @@ import warnings
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_hub as hub
 
 
 def _globally_disable_gpu_memory_growth():
@@ -43,8 +42,6 @@ def load_model_cached(model_type: str, model_path: str | pathlib.Path) -> Any:
   _globally_disable_gpu_memory_growth()
   if model_type == 'tf':
     model = tf.saved_model.load(model_path)
-  elif model_type == 'hub':
-    model = hub.load(model_path, tags=['serve'])
   elif model_type == 'npy':
     model = np.load(model_path)
   else:

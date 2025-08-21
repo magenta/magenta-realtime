@@ -20,9 +20,8 @@ dependencies = [
   "gin-config",
   "flaxformer @ git+https://github.com/google/flaxformer@399ea3a",
   "google-cloud-storage",
-  # TODO(kehanghan): Update to latest JAX once tf2jax is updated.
-  "jax==0.6.2",
-  "jaxlib==0.6.2",
+  "jax",
+  "jaxlib",
   "librosa",
   "numpy",
   "resampy",
@@ -32,11 +31,7 @@ dependencies = [
   "seqio",
   "soundfile",
   "t5x @ git+https://github.com/google-research/t5x.git@92c5b46",
-  # TODO(chrisdonahue): Change nightly->stable once MusicCoCa supported.
-  "tensorflow-text-nightly",
-  "tf-nightly",
-  "tf-hub-nightly",
-  "tf2jax==0.3.7",
+  "tf2jax",
   "tqdm",
   "typing-extensions",
 ]
