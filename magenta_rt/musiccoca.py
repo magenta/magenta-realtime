@@ -55,6 +55,11 @@ BatchStyleEmbedding: TypeAlias = np.ndarray
 BatchStyleTokens: TypeAlias = np.ndarray
 
 
+# NOTE: This is the correct ordering to achieve equivalence to reference
+# implementation. Variable names were not properly sorted in SavedModel.
+MUSICCOCA_RVQ_VAR_ORDER = [0, 1, 4, 5, 6, 7, 8, 9, 10, 11, 2, 3]
+
+
 @dataclasses.dataclass
 class MusicCoCaConfiguration:
   """Configuration parameters for MusicCoCa."""
@@ -385,9 +390,7 @@ class MusicCoCaV212F(MusicCoCaBase):
         ),
         dtype=np.float32,
     )
-    # NOTE: This is the correct ordering to achieve equivalence to reference
-    # implementation. Variable names were not properly sorted in SavedModel.
-    for k, v_name in enumerate([0, 1, 4, 5, 6, 7, 8, 9, 10, 11, 2, 3]):
+    for k, v_name in enumerate(MUSICCOCA_RVQ_VAR_ORDER):
       var = tf.train.load_variable(
           var_path, f'variables/{v_name}/.ATTRIBUTES/VARIABLE_VALUE'
       )
