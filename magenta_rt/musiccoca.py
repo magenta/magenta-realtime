@@ -37,13 +37,12 @@ from typing import Any, List, Optional
 
 import numpy as np
 import tensorflow as tf
-# TODO(chrisdonahue): Lighter weight way to register SentencepieceOp?
-import tensorflow_text  # pylint: disable=unused-import
 from typing_extensions import TypeAlias
 
 from . import asset
 from . import audio
 from . import utils
+import sentencepiece as sentencepiece_processor
 
 BatchText: TypeAlias = List[str]
 BatchAudio: TypeAlias = List[audio.Waveform]
@@ -358,13 +357,18 @@ class MusicCoCaV212F(MusicCoCaBase):
         )
     )
     if not lazy:
+      self._vocab  # pylint: disable=pointless-statement
       self._encoder  # pylint: disable=pointless-statement
       self._rvq_codebooks  # pylint: disable=pointless-statement
       self.tokenize(self.embed('foo'))  # warm start
 
   @property
   def _encoder_path(self) -> str:
-    return 'savedmodels/musiccoca_mv212f_cpu_compat'
+    return 'savedmodels/musiccoca_mv212f_cpu_novocab'
+
+  @property
+  def _vocab_path(self) -> str:
+    return 'vocabularies/musiccoca_mv212f_vocab.model'
 
   @property
   def _rvq_codebooks_path(self) -> str:
@@ -377,6 +381,12 @@ class MusicCoCaV212F(MusicCoCaBase):
           'tf',
           asset.fetch(self._encoder_path, is_dir=True),
       )
+
+  @functools.cached_property
+  def _vocab(self) -> Any:
+    sp = sentencepiece_processor.SentencePieceProcessor()
+    sp.Load(asset.fetch(self._vocab_path))
+    return sp
 
   @functools.cached_property
   def _rvq_codebooks(self) -> np.ndarray:
@@ -402,16 +412,38 @@ class MusicCoCaV212F(MusicCoCaBase):
       batch_text: BatchText,
   ) -> BatchStyleEmbedding:
     # Load MusicCoCa encoder.
-    emb_text = lambda x: self._encoder.signatures['embed_text'](inputs_0=x)[
+    emb_text = lambda x, y: self._encoder.signatures['embed_text'](
+        inputs_0=x, inputs_0_1=y
+    )[
         'contrastive_txt_embed'
     ]
 
     # Embed text.
     embeddings = []
+    max_text_length = 128
+    target_sos_id = 1
     for s in batch_text:
-      # TODO(kehanghan): support bs>1 in SavedModel?
+      # text => lowercase => ids and paddings
+      labels = self._vocab.EncodeAsIds(s.lower())
+      num_tokens = len(labels)
+
+      labels = labels[: max_text_length - 1]
+      num_tokens = min(num_tokens, max_text_length - 1)
+
+      ids = [target_sos_id] + labels
+      num_tokens += 1
+
+      # pad ids to the length of max_text_length with pad value 0
+      ids = ids + [0] * (max_text_length - len(ids))
+      ids = np.array(ids, dtype=np.int32)
+      ids = tf.reshape(ids, (1, -1))
+      paddings = 1.0 - tf.sequence_mask(
+          num_tokens, maxlen=max_text_length, dtype=tf.float32
+      )
+      paddings = tf.reshape(paddings, (1, -1))
+      # ids and paddings => embeddings
       with tf.device('/cpu:0'):
-        embeddings.append(emb_text(tf.constant([s])).numpy()[0])
+        embeddings.append(emb_text(ids, paddings).numpy()[0])
     return np.array(embeddings)
 
   def _embed_batch_clips(

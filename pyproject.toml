@@ -26,7 +26,6 @@ dependencies = [
   "numpy",
   "resampy",
   "requests",
-  # TODO(chrisdonahue): Do we need sentencepiece *and* tensorflow-text?
   "sentencepiece",
   "seqio",
   "soundfile",
