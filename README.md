@@ -35,22 +35,53 @@ instructions below for running locally.
 
 ## Local installation
 
-Install the latest version:
+### Step 1: install Python 3.12
+
+We recommend Python 3.12, as it's the version Magenta RT is tested with.
 
 ```sh
-# With GPU support:
-pip install 'git+https://github.com/magenta/magenta-realtime#egg=magenta_rt[gpu]'
-# With TPU support:
-pip install 'git+https://github.com/magenta/magenta-realtime#egg=magenta_rt[tpu]'
-# CPU only
-pip install 'git+https://github.com/magenta/magenta-realtime'
+sudo apt update
+sudo apt install software-properties-common -y
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt install python3.12 python3.12-venv python3.12-dev -y
 ```
 
-Or, clone and install for local editing:
+### Step 2 (TPU): install Magenta RT
 
 ```sh
-git clone https://github.com/magenta/magenta-realtime.git && cd magenta-realtime
+# create a python venv
+python3.12 -m venv .venv
+source .venv/bin/activate
+# install magenta-rt
+git clone https://github.com/magenta/magenta-realtime.git
+pip install -e magenta-realtime/[tpu] && pip install tf2jax==0.3.8 huggingface_hub
+```
+### Step 2 (GPU): install Magenta RT
+
+```sh
+# create a python venv
+python3.12 -m venv .venv
+source .venv/bin/activate
+# install t5x
+git clone https://github.com/google-research/t5x.git
+cd t5x; git checkout 92c5b46
+sed -i 's|pysimdjson==5.0.2|pysimdjson|g' setup.py
 pip install -e .[gpu]
+# install magenta-rt
+git clone https://github.com/magenta/magenta-realtime.git
+sed -i 's|t5x\[gpu\] @ git+https://github.com/google-research/t5x\.git@92c5b46|t5x[gpu]|g' pyproject.toml
+sed -i 's|t5x @ git+https://github.com/google-research/t5x\.git@92c5b46|t5x|g' pyproject.toml
+pip install -e --no-cache-dir -e .[gpu] && pip install tf2jax==0.3.8
+```
+
+### Step 3: Pin tensorflow-text version
+Magenta RT depends on SeqIO, which introduces a requirement for TensorFlow-Text.
+Be aware that only certain versions of TensorFlow-Text are compatible with
+recent TensorFlow releases.
+
+```sh
+pip uninstall -y tensorflow tensorflow-cpu tensorflow-text
+pip install tf-nightly==2.20.0.dev20250619 tensorflow-text-nightly==2.20.0.dev20250316
 ```
 
 ## Examples
