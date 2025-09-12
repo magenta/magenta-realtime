@@ -33,7 +33,47 @@ and [customization via finetuning](https://colab.research.google.com/github/mage
 If you have a machine with a TPU or GPU, you may also following the installation
 instructions below for running locally.
 
+## Running locally via Docker
+
+You can also try generating music via Magenta RealTime locally on your hardware
+using the following commands. This requires: (1) a powerful GPU w/ 40GB memory,
+(2) Linux, and (3) [Docker](https://www.docker.com/get-started/).
+
+First, **download the prebuilt container** (one time setup):
+
+```sh
+docker pull us-docker.pkg.dev/brain-magenta/magenta-rt/magenta-rt:gpu
+docker tag us-docker.pkg.dev/brain-magenta/magenta-rt/magenta-rt:gpu magenta-rt
+mkdir -p ~/.cache/magenta_rt && mkdir -p ./docker_io
+```
+
+Then, run the following command to **run Magenta RT on your local GPU**:
+
+```sh
+docker run -it \
+  --gpus device=0 \
+  -v ~/.cache/magenta_rt:/magenta-realtime/cache \
+  -v $(pwd)/docker_io:/io \
+  magenta-rt \
+  python -m magenta_rt.generate \
+  --prompt="blissful ambient synth" \
+  --output="/io/output.mp3"
+```
+
+For now, this will only allow you to generate music in an offline setting. We
+are actively working on a Docker-based demo that you can use to explore
+real-time interaction!
+
+If you prefer, you can build the Docker container locally using:
+
+```sh
+docker build -t magenta-rt .
+```
+
 ## Local installation
+
+If you prefer to run Magenta RT natively rather than
+[using Docker](#running-locally-via-docker), follow these instructions!
 
 ### Step 1: install Python 3.12
 
