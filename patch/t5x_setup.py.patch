@@ -1,0 +1,13 @@
+--- setup.py	2025-10-17 19:02:11.546631509 +0000
++++ setup_patched.py	2025-10-17 19:02:32.512024578 +0000
+@@ -80,8 +80,8 @@
+         'tpu': [f'jax[tpu] >= {_jax_version}'],
+         'gpu': [
+             'ipdb==0.13.9',
+-            'fasttext==0.9.2',
+-            'pysimdjson==5.0.2',
++            'fasttext',
++            'pysimdjson',
+             'pytablewriter==0.64.2',
+             'gdown==4.5.3',
+             'best-download==0.0.9',

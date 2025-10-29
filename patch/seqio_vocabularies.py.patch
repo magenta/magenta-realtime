@@ -1,0 +1,10 @@
+--- vocabularies.py	2025-10-17 19:03:32.884036057 +0000
++++ vocabularies_patched.py	2025-10-17 19:22:04.389891253 +0000
+@@ -23,7 +23,6 @@
+ 
+ from absl import logging
+ import tensorflow.compat.v2 as tf
+-import tensorflow_text as tf_text
+ 
+ from sentencepiece import sentencepiece_model_pb2
+ import sentencepiece as sentencepiece_processor

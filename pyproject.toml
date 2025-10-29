@@ -29,7 +29,7 @@ dependencies = [
   "sentencepiece",
   "seqio",
   "soundfile",
-  "t5x @ git+https://github.com/google-research/t5x.git@92c5b46",
+  "t5x",
   "tf2jax",
   "tqdm",
   "typing-extensions",
@@ -41,7 +41,7 @@ test = [
 ]
 gpu = [
   "jax[cuda12]",
-  "t5x[gpu] @ git+https://github.com/google-research/t5x.git@92c5b46",
+  "t5x[gpu]",
 ]
 tpu = [
   "jax[tpu]==0.8.0",
@@ -60,4 +60,3 @@ where = ["."]
   "colab/static/js/*.js",
   "colab/static/html/*.html",
   ]
-

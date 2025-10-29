@@ -86,42 +86,46 @@ sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt install python3.12 python3.12-venv python3.12-dev -y
 ```
 
-### Step 2 (TPU): install Magenta RT
+### Step 2: install Magenta RT for GPU
 
 ```sh
-# create a python venv
+# Clone Magenta RT
+git clone https://github.com/magenta/magenta-realtime.git
+cd magenta-realtime
+# Create a virtual environment
 python3.12 -m venv .venv
 source .venv/bin/activate
-# install magenta-rt
+# Patch and install t5x
+git clone https://github.com/google-research/t5x.git && \
+  pushd t5x && \
+  git checkout 7781d16 && \
+  patch setup.py < ../patch/t5x_setup.py.patch && \
+  patch t5x/partitioning.py < ../patch/t5x_partitioning.py.patch && \
+  pip install .[gpu] && \
+  popd
+# Install Magenta RT
+pip install -e .[gpu] && pip install tf2jax==0.3.8
+# Patch seqIO to remove tensorflow-text dependency
+patch .venv/lib/python3.12/site-packages/seqio/vocabularies.py < patch/seqio_vocabularies.py.patch
+```
+
+### Step 2 (alternative): install Magenta RT for TPU
+
+```sh
+# Create a virtual environment
+python3.12 -m venv .venv
+source .venv/bin/activate
+# Install Magenta RT
 git clone https://github.com/magenta/magenta-realtime.git
 pip install -e magenta-realtime/[tpu] && pip install tf2jax==0.3.8 huggingface_hub
 ```
-### Step 2 (GPU): install Magenta RT
+
+### Step 3: generate!
 
 ```sh
-# create a python venv
-python3.12 -m venv .venv
-source .venv/bin/activate
-# install t5x
-git clone https://github.com/google-research/t5x.git
-cd t5x; git checkout 92c5b46
-sed -i 's|pysimdjson==5.0.2|pysimdjson|g' setup.py
-pip install -e .[gpu]
-# install magenta-rt
-git clone https://github.com/magenta/magenta-realtime.git
-sed -i 's|t5x\[gpu\] @ git+https://github.com/google-research/t5x\.git@92c5b46|t5x[gpu]|g' pyproject.toml
-sed -i 's|t5x @ git+https://github.com/google-research/t5x\.git@92c5b46|t5x|g' pyproject.toml
-pip install -e --no-cache-dir -e .[gpu] && pip install tf2jax==0.3.8
-```
-
-### Step 3: Pin tensorflow-text version
-Magenta RT depends on SeqIO, which introduces a requirement for TensorFlow-Text.
-Be aware that only certain versions of TensorFlow-Text are compatible with
-recent TensorFlow releases.
-
-```sh
-pip uninstall -y tensorflow tensorflow-cpu tensorflow-text
-pip install tf-nightly==2.20.0.dev20250619 tensorflow-text-nightly==2.20.0.dev20250316
+python -m magenta_rt.generate \
+  --prompt="blissful ambient synth" \
+  --output="./output.mp3"
 ```
 
 ## Examples
