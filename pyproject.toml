@@ -29,7 +29,7 @@ dependencies = [
   "sentencepiece",
   "seqio",
   "soundfile",
-  "t5x",
+  "t5x @ git+https://github.com/google-research/t5x.git",
   "tf2jax",
   "tqdm",
   "typing-extensions",
@@ -45,7 +45,7 @@ gpu = [
 ]
 tpu = [
   "jax[tpu]==0.8.0",
-  "t5x[tpu] @ git+https://github.com/google-research/t5x.git@92c5b46",
+  "t5x[tpu] @ git+https://github.com/google-research/t5x.git",
 ]
 
 [project.urls]
