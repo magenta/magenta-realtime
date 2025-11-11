@@ -117,9 +117,7 @@ def main(unused_argv):
   for _ in tqdm.tqdm(range(num_chunks)):
     chunk, state = magenta_rt.generate_chunk(state=state, style=style)
     chunks.append(chunk)
-  generated = audio.concatenate(
-      chunks, crossfade_time=magenta_rt.config.crossfade_length
-  )[:num_samples]
+  generated = audio.concatenate(chunks)[:num_samples]
   generated.write(_OUTPUT.value)
 
 

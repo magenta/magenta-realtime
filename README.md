@@ -149,7 +149,7 @@ state = None
 for i in range(round(num_seconds / mrt.config.chunk_length)):
   state, chunk = mrt.generate_chunk(state=state, style=style)
   chunks.append(chunk)
-generated = audio.concatenate(chunks, crossfade_time=mrt.crossfade_length)
+generated = audio.concatenate(chunks)
 display(Audio(generated.samples.swapaxes(0, 1), rate=mrt.sample_rate))
 ```
 

@@ -15,6 +15,7 @@
 
 """Audio processing utils."""
 
+import functools
 from typing import BinaryIO, Optional
 
 import librosa
@@ -182,16 +183,38 @@ class Waveform:
     return Waveform(self._samples[key], self.sample_rate)
 
 
-def concatenate(
-    waveforms: list[Waveform],
-    crossfade_time: float = 0.0,
+@functools.lru_cache(maxsize=1)
+def crossfade_ramp(
+    num_samples: int,
     style: str = "eqpower",
 ):
+  """Returns a crossfade ramp for a given style and direction."""
+  # Compute crossfade
+  if style == "linear":
+    # Linear crossfade
+    ramp = np.linspace(
+        0, 1, num_samples, endpoint=False, dtype=np.float32
+    )
+  elif style == "eqpower":
+    # Equal power crossfade
+    ramp = np.sin(
+        np.linspace(
+            0,
+            np.pi / 2,
+            num_samples,
+            endpoint=False,
+            dtype=np.float32,
+        )
+    )
+  else:
+    raise ValueError(f"Unsupported crossfade style: {style}")
+  return ramp
+
+
+def concatenate(waveforms: list[Waveform]):
   """Concatenates a list of waveforms into a single waveform."""
   if not waveforms:
     raise ValueError("No waveforms to concatenate.")
-
-  # Make sure all waveforms have common sample rate and number of channels.
   all_sample_rates = set(w.sample_rate for w in waveforms)
   if len(all_sample_rates) != 1:
     raise ValueError("All waveforms must have the same sample rate.")
@@ -199,50 +222,9 @@ def concatenate(
   all_num_channels = set(w.num_channels for w in waveforms)
   if len(all_num_channels) != 1:
     raise ValueError("All waveforms must have the same number of channels.")
-  num_channels = all_num_channels.pop()
-
-  # Compute crossfades and number of output samples
-  crossfade_length_samples = round(crossfade_time * sample_rate)
-  if any(w.num_samples < (crossfade_length_samples * 2) for w in waveforms):
-    raise ValueError(
-        "All waveforms must be longer than twice the crossfade time."
-    )
-  num_output_samples = (
-      sum(w.num_samples - crossfade_length_samples for w in waveforms)
-      + crossfade_length_samples
-  )
-  if style == "linear":
-    # Linear crossfade
-    fade_in = np.linspace(
-        0, 1, crossfade_length_samples, endpoint=False, dtype=np.float32
-    )
-  elif style == "eqpower":
-    # Equal power crossfade
-    fade_in = np.sin(
-        np.linspace(
-            0,
-            np.pi / 2,
-            crossfade_length_samples,
-            endpoint=False,
-            dtype=np.float32,
-        )
-    )
-  else:
-    raise ValueError(f"Unsupported crossfade style: {style}")
-  fade_out = np.flip(fade_in)
-
-  # Concatenate waveforms
-  samples = np.zeros((num_output_samples, num_channels), dtype=np.float32)
-  sample_idx = 0
-  for w in waveforms:
-    # Apply fade
-    w_samples = w.samples.copy()
-    if crossfade_length_samples > 0:
-      w_samples[:crossfade_length_samples] *= fade_in[:, np.newaxis]
-      w_samples[-crossfade_length_samples:] *= fade_out[:, np.newaxis]
-    samples[sample_idx : sample_idx + w.num_samples] += w_samples
-    sample_idx += w.num_samples - crossfade_length_samples
-  return Waveform(samples=samples, sample_rate=sample_rate)
+  result_samples = np.concatenate([w.samples for w in waveforms], axis=0)
+  result = Waveform(result_samples, sample_rate)
+  return result
 
 
 def amp_to_db(amp: float, amp_ref: float = 1.0) -> float:

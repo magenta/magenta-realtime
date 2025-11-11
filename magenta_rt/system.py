@@ -42,6 +42,7 @@ class MagentaRTConfiguration:
   crossfade_length: float = 0.04
   codec_sample_rate: int = 48000
   codec_frame_rate: float = 25.0
+  codec_num_channels: int = 2
   codec_rvq_codebook_size: int = 1024
   style_rvq_codebook_size: int = 1024
   encoder_codec_rvq_depth: int = 4
@@ -59,8 +60,8 @@ class MagentaRTConfiguration:
         self.crossfade_length,
         1 / self.codec_frame_rate,
     ]:
-      if t <= 0:
-        raise ValueError(f"All lengths must be positive: {t}")
+      if t < 0:
+        raise ValueError(f"All lengths must be non-negative: {t}")
       if not (t * self.codec_sample_rate).is_integer():
         raise ValueError(f"Length * sample_rate must be an integer: {t}")
       if not (t * self.codec_frame_rate).is_integer():
@@ -151,6 +152,7 @@ class MagentaRTState:
       self,
       config: MagentaRTConfiguration,
       context_tokens: Optional[np.ndarray] = None,
+      crossfade_samples: Optional[audio.Waveform] = None,
       chunk_index: int = 0,
   ):
     self._config = config
@@ -158,7 +160,19 @@ class MagentaRTState:
       context_tokens = np.full(
           self._config.context_tokens_shape, -1, dtype=np.int32
       )
+    if crossfade_samples is None:
+      crossfade_samples = audio.Waveform(
+          samples=np.zeros(
+              (
+                  self._config.crossfade_length_samples,
+                  self._config.codec_num_channels,
+              ),
+              dtype=np.float32,
+          ),
+          sample_rate=self._config.codec_sample_rate,
+      )
     self.context_tokens = context_tokens
+    self.crossfade_samples = crossfade_samples
     self._chunk_index = chunk_index
 
   @property
@@ -169,6 +183,11 @@ class MagentaRTState:
   @property
   def chunk_index(self) -> int:
     return self._chunk_index
+
+  @property
+  def crossfade_samples(self) -> audio.Waveform:
+    assert hasattr(self, "_crossfade_samples")
+    return self._crossfade_samples
 
   @property
   def shape(self) -> tuple[int, ...]:
@@ -186,7 +205,33 @@ class MagentaRTState:
       )
     self._context_tokens = value
 
-  def update(self, chunk_tokens: np.ndarray):
+  @crossfade_samples.setter
+  def crossfade_samples(self, crossfade_samples: audio.Waveform):
+    if crossfade_samples.sample_rate != self._config.codec_sample_rate:
+      raise ValueError(
+          "Crossfade frame must have sample rate"
+          f" {self._config.codec_sample_rate}. Got"
+          f" {crossfade_samples.sample_rate}"
+      )
+    if crossfade_samples.num_samples != self._config.crossfade_length_samples:
+      raise ValueError(
+          "Crossfade frame must have"
+          f" {self._config.crossfade_length_samples} samples. Got"
+          f" {crossfade_samples.num_samples}"
+      )
+    if crossfade_samples.num_channels != self._config.codec_num_channels:
+      raise ValueError(
+          "Crossfade frame must have"
+          f" {self._config.codec_num_channels} channels. Got"
+          f" {crossfade_samples.num_channels}"
+      )
+    self._crossfade_samples = crossfade_samples
+
+  def update(
+      self,
+      chunk_tokens: np.ndarray,
+      crossfade_samples: Optional[audio.Waveform],
+  ):
     """Updates the state with the tokens from the next chunk."""
     if chunk_tokens.dtype != np.int32:
       raise TypeError(f"Chunk tokens must be int32. Got {chunk_tokens.dtype}")
@@ -206,6 +251,11 @@ class MagentaRTState:
           "Chunk tokens must be in the range [0,"
           f" {self._config.codec_rvq_codebook_size}). Got {chunk_tokens}"
       )
+    if self._config.crossfade_length > 0:
+      if crossfade_samples is None:
+        raise ValueError("Crossfade frame cannot be None.")
+      else:
+        self.crossfade_samples = crossfade_samples
     self.context_tokens = np.concatenate(
         [self.context_tokens[chunk_tokens.shape[0] :], chunk_tokens],
         axis=0,
@@ -324,6 +374,7 @@ class MockMagentaRT(MagentaRTBase):
       config: MagentaRTConfiguration = MagentaRTConfiguration(),
       codec_config: spectrostream.SpectroStreamConfiguration = spectrostream.SpectroStreamConfiguration(),
       style_config: musiccoca.MusicCoCaConfiguration = musiccoca.MusicCoCaConfiguration(),
+      gain: float = 0.01,
       **kwargs,
   ):
     super().__init__(
@@ -333,6 +384,7 @@ class MockMagentaRT(MagentaRTBase):
         style_model=musiccoca.MockMusicCoCa(style_config),
         **kwargs,
     )
+    self._gain = gain
 
   def generate_chunk(
       self,
@@ -353,13 +405,16 @@ class MockMagentaRT(MagentaRTBase):
     style_tokens = self.style_model.tokenize(style)
     del style_tokens
 
-    # Generate audio and tokens (random noise)
+    # Generate audio and tokens (white noise)
     if seed is not None:
       np.random.seed(seed + state.chunk_index)
-    result = audio.Waveform(
-        samples=np.random.rand(
-            self.config.chunk_length_samples, self.num_channels
-        ),
+    chunk_with_xfade = audio.Waveform(
+        samples=np.random.randn(
+            self.config.chunk_length_samples
+            + self.config.crossfade_length_samples,
+            self.num_channels,
+        )
+        * self._gain,
         sample_rate=self.sample_rate,
     )
     tokens = np.random.randint(
@@ -373,9 +428,13 @@ class MockMagentaRT(MagentaRTBase):
     )
 
     # Update state
-    state.update(tokens)
+    crossfade_samples = chunk_with_xfade[
+        -self.config.crossfade_length_samples :
+    ]
+    chunk = chunk_with_xfade[: -self.config.crossfade_length_samples]
+    state.update(tokens, crossfade_samples)
 
-    return result, state
+    return chunk, state
 
 
 # _DeviceParams is (batch_size, num partitions, model_parallel_submesh)
@@ -646,11 +705,10 @@ class MagentaRTT5X(MagentaRTBase):
 
     # Decode via SpectroStream using additional frame of samples for crossfading
     # We want to generate a 2s chunk with an additional 40ms of crossfade, which
-    # is one additional codec frame. Caller is responsible for actually applying
-    # the crossfade.
+    # is one additional codec frame.
     xfade_frames = state.context_tokens[-self.config.crossfade_length_frames :]
     if state.chunk_index == 0:
-      # NOTE: This will create 40ms of gibberish at the beginning but it's OK.
+      # NOTE: This will create 40ms of gibberish but will be crossfaded in.
       xfade_frames = np.zeros_like(xfade_frames)
     assert xfade_frames.min() >= 0
     xfade_tokens = np.concatenate([xfade_frames, generated_rvq_tokens], axis=0)
@@ -658,18 +716,37 @@ class MagentaRTT5X(MagentaRTBase):
         self.config.crossfade_length_frames + max_decode_frames,
         self.config.decoder_codec_rvq_depth,
     )  # (N+1, 16)
-    waveform = self.codec.decode(xfade_tokens)
-    assert isinstance(waveform, audio.Waveform)
-    assert waveform.samples.shape == (
+    chunk_with_xfade = self.codec.decode(xfade_tokens)
+    assert isinstance(chunk_with_xfade, audio.Waveform)
+    assert chunk_with_xfade.samples.shape == (
         self.config.crossfade_length_samples
         + max_decode_frames * self.config.frame_length_samples,
         self.num_channels,
     )  # ((N+1)*1920, 2)
 
-    # Update state
-    state.update(generated_rvq_tokens)
+    # Perform crossfade for caller, storing the last few samples in the state to
+    # be used for crossfading with the next chunk.
+    xfade_samples = chunk_with_xfade[-self.config.crossfade_length_samples :]
+    xfade_ramp = audio.crossfade_ramp(
+        self.config.crossfade_length_samples,
+        style="eqpower",
+    )[:, np.newaxis]
+    chunk = chunk_with_xfade[: -self.config.crossfade_length_samples]
+    # Fade in current chunk
+    chunk.samples[: self.config.crossfade_length_samples] *= xfade_ramp
+    # Fade out last chunk
+    chunk.samples[
+        : self.config.crossfade_length_samples
+    ] += state.crossfade_samples.samples * np.flip(xfade_ramp, axis=0)
+    assert chunk.samples.shape == (
+        self.config.chunk_length_samples,
+        self.num_channels,
+    )
 
-    return (waveform, state)
+    # Update state
+    state.update(generated_rvq_tokens, xfade_samples)
+
+    return (chunk, state)
 
 
 MagentaRT = MagentaRTT5X  # Alias to indicate default codepath.
