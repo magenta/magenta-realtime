@@ -29,7 +29,6 @@ dependencies = [
   "sentencepiece",
   "seqio",
   "soundfile",
-  "t5x @ git+https://github.com/google-research/t5x.git",
   "tf2jax",
   "tqdm",
   "typing-extensions",
