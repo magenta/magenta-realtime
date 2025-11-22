@@ -1,0 +1,371 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Magenta RT</title>
+    <style>
+      body {
+        background-image: linear-gradient(135deg, #ee9ae5 10%, #5961f9 90%);
+        background-size: 200% 200%;
+        font-family: "Lucida Console", Monaco, monospace;
+        color: #fff;
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        transition: background-image 1.5s ease-in-out;
+        text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+      }
+
+      h1 {
+        font-size: 3em;
+        color: #00ffcc;
+        text-shadow:
+          0 0 10px #00ffcc,
+          0 0 20px rgba(0, 0, 0, 0.8);
+        margin-bottom: 40px;
+        text-align: center;
+      }
+
+      #controls {
+        background: rgba(0, 0, 0, 0.4);
+        padding: 30px 40px;
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.6);
+        text-align: center;
+        width: 100%;
+        max-width: 500px;
+        box-sizing: border-box;
+      }
+
+      .control-group {
+        margin-bottom: 25px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+      }
+
+      .control-group:last-child {
+        margin-bottom: 0;
+      }
+
+      .input-button-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+      }
+
+      label {
+        margin-bottom: 10px;
+        font-size: 1.1em;
+        color: #ff00cc;
+        text-shadow: 0 0 8px #ff00cc;
+        display: block;
+      }
+
+      input[type="text"] {
+        padding: 10px 15px;
+        border-radius: 5px;
+        border: 1px solid #ff00cc;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        font-family: inherit;
+        font-size: 1em;
+        flex-grow: 1;
+        margin-right: 10px;
+        min-width: 150px; /* Adjusted min-width */
+      }
+      input[type="text"]:focus {
+        outline: none;
+        box-shadow: 0 0 10px #ff00cc;
+      }
+
+      button {
+        padding: 10px 20px;
+        border-radius: 5px;
+        border: 1px solid #00ffcc;
+        background-color: rgba(0, 255, 204, 0.1);
+        color: #00ffcc;
+        font-family: inherit;
+        font-size: 1em;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin: 5px 5px;
+        text-shadow: 0 0 8px #00ffcc;
+        white-space: nowrap;
+      }
+
+      button:hover {
+        background-color: #00ffcc;
+        color: #1a1a1a;
+        box-shadow: 0 0 15px #00ffcc;
+        text-shadow: none;
+      }
+
+      button:disabled {
+        border-color: #555;
+        background-color: rgba(85, 85, 85, 0.1);
+        color: #555;
+        text-shadow: none;
+        cursor: not-allowed;
+        box-shadow: none;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Magenta RT</h1>
+    <div id="controls">
+      <div class="control-group">
+        <label for="style">Style:</label>
+        <div class="input-button-row">
+          <input type="text" id="style" name="style" value="ambient synths" />
+          <button id="update-style-button">Update Style</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div>
+          <button id="start-pause-button">Start</button>
+          <button id="stop-button">Stop</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const styleInput = document.getElementById("style");
+      const updateStyleButton = document.getElementById("update-style-button");
+      const startPauseButton = document.getElementById("start-pause-button");
+      const stopButton = document.getElementById("stop-button");
+
+      let audioContext;
+      let ws;
+      let styleEmbedding;
+      let streamInfo;
+      let playbackState = "PLAYING"; // PLAYING or PAUSED
+      let gainNode;
+      let nextChunkTime = 0;
+      let bufferQueue = [];
+      let isPlayingBuffer = false;
+
+      const gradients = [
+        "linear-gradient(135deg, #ee9ae5 10%, #5961f9 90%)",
+        "linear-gradient(135deg, #f72585, #b5179e, #7209b7, #480ca8)",
+        "linear-gradient(135deg, #4361ee, #3a0ca3, #3f37c9, #4895ef)",
+        "linear-gradient(135deg, #00ffcc, #00bbf9, #0077b6, #023e8a)",
+        "linear-gradient(135deg, #ff006e, #ff4d6d, #ff758f, #ff8fa3)",
+        "linear-gradient(45deg, #ff9a9e 20%, #fad0c4 90%)",
+        "linear-gradient(45deg, #1f005c, #5b0060, #870160, #ac255e, #ca485c, #e16b5c, #f39060, #ffb56b)",
+        "linear-gradient(135deg, #08AEEA 0%, #2AF598 100%)",
+        "linear-gradient(135deg, #FF00F1 0%, #7600F1 100%)",
+      ];
+      let gradientIndex = Math.floor(Math.random() * gradients.length);
+
+      function changeBackground() {
+        document.body.style.backgroundImage = gradients[gradientIndex];
+        gradientIndex = (gradientIndex + 1) % gradients.length;
+      }
+
+      async function getStyleEmbedding(text) {
+        try {
+          const response = await fetch("/style", {
+            method: "POST",
+            body: text,
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return await response.json();
+        } catch (e) {
+          console.error("Failed to get style embedding:", e);
+          return null;
+        }
+      }
+
+      async function getStreamInfo() {
+        try {
+          const response = await fetch("/stream_info");
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          streamInfo = await response.json();
+          console.log("Stream info:", streamInfo);
+        } catch (e) {
+          console.error("Failed to get stream info:", e);
+          streamInfo = null;
+        }
+      }
+
+      function connectWebSocket() {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(`${protocol}//${window.location.host}/stream`);
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = () => {
+          console.log("WebSocket connected.");
+        };
+
+        ws.onmessage = (event) => {
+          if (event.data instanceof ArrayBuffer) {
+            const float32Array = new Float32Array(event.data);
+            const frameCount = float32Array.length / streamInfo.num_channels;
+            const audioBuffer = audioContext.createBuffer(
+              streamInfo.num_channels,
+              frameCount,
+              streamInfo.sample_rate,
+            );
+            for (let c = 0; c < streamInfo.num_channels; c++) {
+              const channelData = audioBuffer.getChannelData(c);
+              for (let i = 0; i < frameCount; i++) {
+                channelData[i] = float32Array[i * streamInfo.num_channels + c];
+              }
+            }
+            bufferQueue.push(audioBuffer);
+            playBufferQueue();
+            ws.send(JSON.stringify({ type: "ReceivedChunk", body: null }));
+          } else {
+            console.log("Received:", event.data);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+
+        ws.onclose = (event) => {
+          console.log("WebSocket disconnected.");
+          if (event.reason == "Session already active") {
+            alert("Server is busy with an active session. Please try again later.");
+          }
+          ws = null;
+          updateButtons();
+        };
+      }
+
+      function playBufferQueue() {
+        if (isPlayingBuffer || bufferQueue.length === 0) {
+          return;
+        }
+
+        isPlayingBuffer = true;
+        const buffer = bufferQueue.shift();
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(gainNode);
+
+        const currentTime = audioContext.currentTime;
+        if (nextChunkTime < currentTime) {
+          nextChunkTime = currentTime;
+        }
+        source.start(nextChunkTime);
+        nextChunkTime += buffer.duration;
+
+        source.onended = () => {
+          isPlayingBuffer = false;
+          playBufferQueue();
+        };
+      }
+
+      function sendMessage(type, body) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type, body }));
+        } else {
+          console.error("WebSocket is not connected.");
+        }
+      }
+
+      function updateButtons() {
+        if (!ws) {
+          startPauseButton.textContent = "Start";
+        } else {
+          startPauseButton.textContent = playbackState === "PLAYING" ? "Pause" : "Start";
+        }
+        stopButton.disabled = !ws;
+      }
+
+      function updatePlayback(newState) {
+        playbackState = newState;
+        sendMessage("UpdatePlayback", { state: playbackState });
+        updateButtons();
+      }
+
+      updateStyleButton.onclick = async () => {
+        const styleText = styleInput.value || "ambient synths";
+        styleEmbedding = await getStyleEmbedding(styleText);
+        if (styleEmbedding) {
+          changeBackground();
+          if (ws) {
+            sendMessage("UpdateControl", { style: styleEmbedding });
+          }
+        }
+      };
+
+      startPauseButton.onclick = async () => {
+        if (!streamInfo) {
+          await getStreamInfo();
+          if (!streamInfo) {
+            alert("Could not retrieve stream info from server.");
+            return;
+          }
+        }
+
+        if (!audioContext) {
+          audioContext = new AudioContext({ sampleRate: streamInfo.sample_rate });
+          gainNode = audioContext.createGain();
+          gainNode.connect(audioContext.destination);
+          nextChunkTime = audioContext.currentTime;
+        }
+
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
+
+        if (!ws) {
+          // Start a new session
+          styleEmbedding = await getStyleEmbedding(styleInput.value || "ambient synths");
+          if (!styleEmbedding) return;
+          connectWebSocket();
+          // Wait for connection before sending message
+          await new Promise((resolve) => {
+            const interval = setInterval(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                clearInterval(interval);
+                resolve();
+              }
+            }, 100);
+          });
+          sendMessage("StartSession", null);
+          sendMessage("UpdateControl", {
+            style: styleEmbedding,
+            generation_kwargs: {},
+          });
+          updatePlayback("PLAYING");
+        } else if (playbackState === "PLAYING") {
+          // Pause existing session
+          updatePlayback("PAUSED");
+        } else if (playbackState === "PAUSED") {
+          // Resume existing session
+          updatePlayback("PLAYING");
+        }
+      };
+
+      stopButton.onclick = () => {
+        if (ws) {
+          updatePlayback("STOPPED");
+          sendMessage("EndSession", null);
+          bufferQueue = [];
+          isPlayingBuffer = false;
+          ws.close();
+        }
+      };
+
+      // Initial state
+      updateButtons();
+    </script>
+  </body>
+</html>

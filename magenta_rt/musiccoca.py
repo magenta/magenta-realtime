@@ -33,6 +33,7 @@ tokens = style_model.tokenize(np.mean([prompt1, prompt2], axis=0))
 import abc
 import dataclasses
 import functools
+import hashlib
 from typing import Any, List, Optional
 
 import numpy as np
@@ -414,9 +415,7 @@ class MusicCoCaV212F(MusicCoCaBase):
     # Load MusicCoCa encoder.
     emb_text = lambda x, y: self._encoder.signatures['embed_text'](
         inputs_0=x, inputs_0_1=y
-    )[
-        'contrastive_txt_embed'
-    ]
+    )['contrastive_txt_embed']
 
     # Embed text.
     embeddings = []
@@ -490,7 +489,8 @@ class MockMusicCoCa(MusicCoCaBase):
   ) -> BatchStyleEmbedding:
     result = []
     for s in batch_text:
-      np.random.seed(hash(s) % 2**32)
+      seed = int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16) % 2**32
+      np.random.seed(seed)
       result.append(
           np.random.randn(self.config.embedding_dim).astype(np.float32)
       )
@@ -502,7 +502,8 @@ class MockMusicCoCa(MusicCoCaBase):
   ) -> BatchStyleEmbedding:
     result = []
     for c in batch_clips:
-      np.random.seed(hash(c.tobytes()) % 2**32)
+      seed = int(hashlib.sha256(c.tobytes()).hexdigest(), 16) % 2**32
+      np.random.seed(seed)
       result.append(
           np.random.randn(self.config.embedding_dim).astype(np.float32)
       )

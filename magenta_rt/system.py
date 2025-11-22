@@ -18,7 +18,8 @@
 import abc
 import dataclasses
 import functools
-from typing import Callable, Optional, Tuple
+import hashlib
+from typing import Callable, Literal, Optional, Tuple
 import warnings
 
 import jax
@@ -44,6 +45,7 @@ class MagentaRTConfiguration:
   codec_frame_rate: float = 25.0
   codec_num_channels: int = 2
   codec_rvq_codebook_size: int = 1024
+  style_embedding_dim: int = 768
   style_rvq_codebook_size: int = 1024
   encoder_codec_rvq_depth: int = 4
   encoder_style_rvq_depth: int = 6
@@ -316,6 +318,10 @@ class MagentaRTBase(abc.ABC):
           "Style RVQ codebook size must match the configuration RVQ"
           " codebook size."
       )
+    if config.style_embedding_dim != self.style_model.config.embedding_dim:
+      raise ValueError(
+          "Style embedding dim must match the configuration embedding dim."
+      )
 
   @property
   def config(self):
@@ -374,6 +380,7 @@ class MockMagentaRT(MagentaRTBase):
       config: MagentaRTConfiguration = MagentaRTConfiguration(),
       codec_config: spectrostream.SpectroStreamConfiguration = spectrostream.SpectroStreamConfiguration(),
       style_config: musiccoca.MusicCoCaConfiguration = musiccoca.MusicCoCaConfiguration(),
+      synthesis_type: Literal["noise", "sine"] = "noise",
       gain: float = 0.01,
       **kwargs,
   ):
@@ -384,6 +391,7 @@ class MockMagentaRT(MagentaRTBase):
         style_model=musiccoca.MockMusicCoCa(style_config),
         **kwargs,
     )
+    self._synthesis_type = synthesis_type
     self._gain = gain
 
   def generate_chunk(
@@ -397,24 +405,42 @@ class MockMagentaRT(MagentaRTBase):
     if state is None:
       state = self.init_state()
     if style is None:
-      style = np.zeros(
-          (self.style_model.config.embedding_dim,), dtype=np.float32
-      )
-
-    # Tokenize style
+      style = np.zeros((self.config.style_embedding_dim,), dtype=np.float32)
     style_tokens = self.style_model.tokenize(style)
-    del style_tokens
 
-    # Generate audio and tokens (white noise)
-    if seed is not None:
-      np.random.seed(seed + state.chunk_index)
+    # Synthesize
+    num_samples = (
+        self.config.chunk_length_samples + self.config.crossfade_length_samples
+    )
+    if self._synthesis_type == "sine":
+      # Generate random pitches based on style seed
+      style_checksum = hashlib.sha256(style_tokens.tobytes()).hexdigest()
+      style_seed = int(style_checksum[:8], 16)
+      np.random.seed(style_seed)
+      pitches = np.random.randint(
+          low=48,
+          high=72,
+          size=(self.num_channels),
+          dtype=np.int32,
+      )
+      frequencies = 440.0 * np.power(2.0, (pitches - 69) / 12.0)
+      time_offset = state.chunk_index * self.chunk_length
+      sample_times = time_offset + (np.arange(num_samples) / self.sample_rate)
+      samples = np.sin(
+          2.0 * np.pi * frequencies[np.newaxis, :] * sample_times[:, np.newaxis]
+      )
+    elif self._synthesis_type == "noise":
+      # Generate random noise based on input seed and time
+      del style_tokens
+      if seed is not None:
+        np.random.seed(seed + state.chunk_index)
+      samples = np.random.randn(num_samples, self.num_channels)
+    else:
+      raise ValueError(f"Unsupported synthesis type: {self._synthesis_type}")
+
+    # Create final outputs
     chunk_with_xfade = audio.Waveform(
-        samples=np.random.randn(
-            self.config.chunk_length_samples
-            + self.config.crossfade_length_samples,
-            self.num_channels,
-        )
-        * self._gain,
+        samples=samples * self._gain,
         sample_rate=self.sample_rate,
     )
     tokens = np.random.randint(
@@ -614,7 +640,7 @@ class MagentaRTT5X(MagentaRTBase):
           dtype=np.int32,
       )
     else:
-      if style.shape != (self.style_model.config.embedding_dim,):
+      if style.shape != (self.config.style_embedding_dim,):
         raise ValueError(f"Invalid style shape: {style.shape}")
       style_tokens = self.style_model.tokenize(style)
       assert style_tokens.shape == (self.style_model.config.rvq_depth,)

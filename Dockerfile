@@ -49,8 +49,9 @@ COPY patch patch
 RUN patch /usr/local/lib/python3.12/dist-packages/t5x/partitioning.py < patch/t5x_partitioning.py.patch
 RUN patch /usr/local/lib/python3.12/dist-packages/seqio/vocabularies.py < patch/seqio_vocabularies.py.patch
 
-# Copy library and tests (last, to improve caching)
+# Copy demos, library and tests (last, to improve caching)
+COPY demos demos
 COPY magenta_rt magenta_rt
 COPY test test
 
-CMD ["python", "-m", "magenta_rt.generate"]
+CMD ["python", "-m", "magenta_rt.server"]
