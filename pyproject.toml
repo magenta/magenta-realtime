@@ -44,7 +44,7 @@ gpu = [
   "t5x[gpu]",
 ]
 tpu = [
-  "jax[tpu]==0.8.0",
+  "jax[tpu]==0.8.1",
   "t5x[tpu] @ git+https://github.com/google-research/t5x.git",
 ]
 
