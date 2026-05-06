@@ -173,7 +173,7 @@ from magenta_rt import audio, spectrostream
 codec = spectrostream.SpectroStream()
 my_audio = audio.Waveform.from_file('jam.mp3')
 my_tokens = codec.encode(my_audio)
-my_audio_reconstruction = codec.decode(tokens)
+my_audio_reconstruction = codec.decode(my_tokens)
 ```
 
 ## Running tests
