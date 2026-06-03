@@ -1,0 +1,10 @@
+{
+  "name": "magenta-rt-v2-examples",
+  "private": true,
+  "workspaces": [
+    "common/react_ui",
+    "mrt2/react_ui",
+    "jam/ui",
+    "collider/ui"
+  ]
+}

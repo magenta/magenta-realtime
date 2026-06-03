@@ -1,0 +1,20 @@
+{
+  "name": "@magenta-rt/common",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.469.0",
+    "@types/react": "^18.3.24"
+  },
+  "dependencies": {
+    "@mui/material": "^6.1.10",
+    "@mui/icons-material": "^6.1.10",
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "lil-gui": "^0.21.0"
+  }
+}

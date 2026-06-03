@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+build_bench/
+*.egg
+.venv/
+venv/
+
+# audio files
+*.wav
+
+# ML model artifacts
+saved_model/
+*.mlpackage/
+*.mlmodel
+*.mlxfn
+*.safetensors
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# C++ build
+build/
+*.o
+*.dylib

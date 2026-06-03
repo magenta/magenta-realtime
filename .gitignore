@@ -1,0 +1,25 @@
+# cache/junk
+*.pyc
+.DS_Store
+
+# dev
+.venv/
+node_modules/
+
+# artifacts
+.coverage
+*.npy
+benchmark_build/
+build/
+dist/
+docs/_build/
+outputs/
+
+# agentic
+AGENTS.md
+.gemini/
+
+# IDE
+.idea
+.vscode/*.json
+*.code-workspace

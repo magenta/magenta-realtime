@@ -1,0 +1,121 @@
+name: CLI, C++ Benchmark, and Core Build Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-mlx:
+    runs-on: macos-14
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: ""
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Create Virtual Environment and Install
+      run: |
+        uv venv --python 3.12
+        source .venv/bin/activate
+        uv pip install -e ".[mlx,dev]"
+        uv pip install "cmake<3.28"
+
+    - name: Export Models for C++ Benchmark
+      run: |
+        source .venv/bin/activate
+        mrt mlx export --output-dir=outputs/exported_models --skip-restore --output-name=cpp_benchmark_mrt2_base --model=mrt2_base --num-layers=2 --model-dims=64 --hidden-dims=64 --num-cfgs=0 --bits=8 --num-codebooks=2
+    - name: CMake Configure
+      run: |
+        source .venv/bin/activate
+        uv run cmake core/src/benchmark -B benchmark_build
+
+    - name: Compile and Run C++ Benchmark
+      run: |
+        source .venv/bin/activate
+        uv run cmake --build benchmark_build --target benchmark_mlxfn -j$(sysctl -n hw.ncpu)
+        ./benchmark_build/benchmark_mlxfn outputs/exported_models/cpp_benchmark_mrt2_base 2
+
+    - name: Run tests with coverage
+      run: |
+        source .venv/bin/activate
+        # TODO: Enable tests requiring checkpoints in CI (e.g., by downloading small checkpoints or mocking).
+        # Currently, test_bitlevel_parity.py and test_prefill_correctness.py will be skipped.
+        pytest tests/ --cov=magenta_rt --cov-report=xml --cov-report=term
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml
+
+  build-examples:
+    name: Build All Examples
+    runs-on: macos-14
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: recursive
+
+    - name: Set up Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+
+    - name: Install and Build TypeScript Workspaces
+      run: |
+        cd examples
+        npm install
+        npm run build --workspaces --if-present
+
+    - name: Install cmake
+      run: brew install cmake
+
+    - name: Configure CMake
+      run: cmake . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+    - name: Compile and Run NumpyRandomState C++ Unit Test
+      # Note: This test is fully self-contained and has no external model/resource dependencies.
+      run: |
+        cmake --build build --target numpy_random_state_test -j$(sysctl -n hw.ncpu)
+        ./build/core/numpy_random_state_test
+
+    - name: Build C++ Core and Examples
+      run: |
+        cmake --build build --target \
+          magentart_core \
+          hello_mrt2 \
+          mrt2_au \
+          mrt2_au_app \
+          mrt2_standalone \
+          mrt2_jam \
+          mrt2_collider \
+          mrt2_max \
+          mrt2_pd \
+          mrt2_sc \
+          -j$(sysctl -n hw.ncpu)

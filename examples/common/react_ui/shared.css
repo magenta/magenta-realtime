@@ -1,0 +1,213 @@
+/* ─── Shared CSS for all Magenta RT apps ──────────────────── */
+
+/* ─── Google Fonts ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans+Text:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+/* ─── Design Tokens ────────────────────────────────────────── */
+:root {
+  --color-bg:       #202124;
+  --color-fg:       #FFF;
+  --color-surface:  #2a2b2e;
+  --color-raised:   #36373a;
+  --color-border:   #353535;
+  --color-muted:    rgba(255, 255, 255, 0.45);
+  --color-accent:   #1E70E6;
+  --app-padding:    20px;
+}
+
+/* ─── CSS Reset (replaces Tailwind Preflight) ──────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+  border-color: currentColor;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+button, input, optgroup, select, textarea {
+  font-family: inherit;
+  font-size: 100%;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+button, [role="button"] {
+  cursor: pointer;
+}
+
+button, select {
+  text-transform: none;
+}
+
+button,
+[type="button"],
+[type="reset"],
+[type="submit"] {
+  -webkit-appearance: button;
+  background-color: transparent;
+  background-image: none;
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+img, video {
+  height: auto;
+}
+
+/* ─── Shared Typography Classes ────────────────────────────── */
+
+.app-title {
+  font-family: 'Google Sans', system-ui, sans-serif;
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 44px;
+  letter-spacing: 1.08px;
+  text-transform: uppercase;
+  color: var(--color-fg);
+  white-space: nowrap;
+}
+
+/* ─── Shared Layout Classes ────────────────────────────────── */
+
+.app-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px var(--app-padding);
+  flex-shrink: 0;
+  line-height: 44px;
+}
+
+
+.panel-header {
+  font-family: 'Google Sans', system-ui, sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.48px;
+  text-transform: uppercase;
+  color: var(--color-fg);
+}
+
+/* ─── Prompt & Input Box Styles ─────────────────── */
+.prompt-box {
+  background-color: var(--color-raised);
+  border-radius: 5px;
+  color: var(--color-fg);
+  font-family: 'Google Sans', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.prompt-box:hover {
+  background-color: #424346;
+}
+
+/* ─── Drag Cursor Override ─────────────────────────────────── */
+
+body.dragging-vertical,
+body.dragging-vertical * {
+  cursor: ns-resize !important;
+}
+
+/* ─── MUI Overrides ────────────────────────────────────────── */
+.MuiSlider-root,
+.MuiButton-root,
+.MuiMenuItem-root,
+.MuiTypography-root {
+  font-family: 'Google Sans Text', system-ui, sans-serif !important;
+}
+
+/* ─── Settings Panel (slide-out drawer) ────────────────────── */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 225ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.settings-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.settings-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  flex-shrink: 0;
+  z-index: 1300;
+  background: #202124; /* not using --color-bg, Jam changes that */
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  color: #FFF;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Google Sans Text', system-ui, sans-serif;
+  transform: translateX(100%);
+  transition: transform 225ms cubic-bezier(0, 0, 0.2, 1);
+  overflow-y: auto;
+}
+.settings-panel.open {
+  transform: translateX(0);
+}
+
+/* ─── Pure CSS Spinner ─────────────────────────────────────── */
+@keyframes magenta-spin {
+  to { transform: rotate(360deg); }
+}
+
+.magenta-spinner {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  border-radius: 50%;
+  animation: magenta-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ─── MagentaToggle hover ──────────────────────────────────── */
+.magenta-toggle:hover .magenta-toggle-label {
+  opacity: 1 !important;
+}
+
+/* ─── Pulse animation ──────────────────────────────────────── */
+@keyframes magenta-pulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1.0;
+  }
+}

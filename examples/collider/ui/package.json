@@ -1,0 +1,37 @@
+{
+  "name": "collider-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config config/vite.config.ts",
+    "build": "tsc -b config/tsconfig.app.json && vite build --config config/vite.config.ts",
+    "postbuild": "node postbuild.js",
+    "preview": "vite preview --config config/vite.config.ts",
+    "kill": "pkill -f Collider 2>/dev/null || true",
+    "open": "open ~/Applications/MRT2\\ -\\ Collider.app",
+    "copy": "cp -r dist/* ~/Applications/MRT2\\ -\\ Collider.app/Contents/Resources/collider_ui/",
+    "cmake": "cd ../../.. && .venv/bin/cmake --build build --target deploy_mrt2_collider -j10",
+    "launch": "npm run kill && npm run cmake && npm run open",
+    "launch:ui": "npm run build && npm run kill && npm run copy && npm run open",
+    "launch:dev": "npm run kill && npm run open"
+  },
+  "dependencies": {
+    "@magenta-rt/common": "*",
+    "lil-gui": "^0.21.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.6.2",
+    "vite": "^6.4.2",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

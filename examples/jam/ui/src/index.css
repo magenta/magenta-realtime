@@ -1,0 +1,89 @@
+@import '../../../common/react_ui/shared.css';
+
+body {
+  font-family: 'Google Sans Text', system-ui, sans-serif;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  background-color: #000;
+  color: var(--color-fg);
+}
+* {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(27, 28, 23, 0.15);
+  border-radius: 3px;
+}
+
+/* Smooth gradient transitions */
+.gradient-bg {
+  transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(27, 28, 23, 0.2);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-fg);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* Piano key styling */
+.white-key {
+  transition: background-color 0.1s ease, box-shadow 0.1s ease !important;
+}
+
+.black-key {
+  transition: background-color 0.1s ease, box-shadow 0.1s ease !important;
+}
+
+.jam-box {
+  background: #1A1A1D;
+  border: 1px solid rgba(255, 255, 255, 0.00);
+  border-radius: 10px;
+}
+
+/* ─── Drag Cursor Override ─────────────────────────────────── */
+body.dragging-vertical,
+body.dragging-vertical * {
+  cursor: ns-resize !important;
+}
+
+body.cursor-none,
+body.cursor-none * {
+  cursor: none !important;
+}
+
+body.cursor-grabbing,
+body.cursor-grabbing * {
+  cursor: grabbing !important;
+}

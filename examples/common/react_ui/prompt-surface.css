@@ -1,0 +1,139 @@
+/* ─── PromptSurface Component Styles ───────────────────────────────── */
+:root {
+  --prompt-enter-duration: 350ms;
+  --prompt-enter-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --prompt-label-fade-duration: 300ms;
+  --trash-enter-duration: 250ms;
+  --trash-enter-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --slider-enter-duration: 500ms;
+  --slider-enter-easing: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --slider-enter-delay: 3000ms;
+  --slider-fade-duration: 100ms;
+}
+
+.trash-zone {
+  transform: translate(calc(-100% - 16px), -50%);
+  transition: transform var(--trash-enter-duration) var(--trash-enter-easing);
+}
+
+.trash-zone.visible {
+  transform: translate(0, -50%);
+}
+
+.trash-zone-inner {
+  transition: transform 150ms ease-out;
+}
+
+.trash-zone-inner.over {
+  transform: scale(1.4);
+}
+
+@keyframes prompt-scale-in {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.prompt-node {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: prompt-scale-in var(--prompt-enter-duration) var(--prompt-enter-easing) forwards;
+}
+
+@keyframes dash-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.ball-selected {
+  stroke-dasharray: 4 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.1s linear;
+  opacity: 0;
+  animation: dash-rotate 8s linear infinite;
+}
+
+.ball-selected.active {
+  opacity: 1;
+}
+
+
+.speed-slider-dock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: visible;
+  opacity: 0;
+  transition:
+    transform var(--slider-enter-duration) var(--slider-enter-easing) var(--slider-enter-delay),
+    opacity var(--slider-enter-duration) ease var(--slider-enter-delay);
+}
+
+.speed-slider-dock.visible {
+  opacity: 1;
+}
+
+@keyframes prompt-label-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.prompt-label {
+  animation: prompt-label-fade-in var(--prompt-label-fade-duration) linear forwards;
+}
+
+/* Draggable SVG elements */
+.draggable {
+  cursor: grab;
+}
+.draggable:active {
+  cursor: grabbing;
+}
+
+/* Global override while dragging */
+body.is-dragging,
+body.is-dragging * {
+  cursor: grabbing !important;
+}
+
+/* Debug outlines */
+.debug-bounds {
+  display: none;
+}
+.debug .debug-bounds {
+  display: block;
+}
+.debug .toolbar {
+  outline: 1px solid cyan;
+}
+.debug .prompt-label input {
+  outline: 1px solid cyan;
+}
+.debug .hitbox {
+  outline: 1px solid cyan;
+  border-radius: 100%;
+}
+
+.dev-badge {
+  position: absolute;
+  top: 53px;
+  left: 12px;
+  z-index: 9999;
+  font-weight: bold;
+  font-size: 12px;
+  color: #000;
+  padding: 4px;
+  background: #fff;
+  border-radius: 4px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.dev-badge:hover {
+  opacity: 0.4;
+}
+.dev-badge.debug-on {
+  background: cyan;
+  opacity: 1;
+}

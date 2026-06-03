@@ -1,0 +1,3 @@
+[submodule "magenta_rt/_vendor/sequence-layers"]
+	path = magenta_rt/_vendor/sequence-layers
+	url = https://github.com/magenta/sequence-layers.git
