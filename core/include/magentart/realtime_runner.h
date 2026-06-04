@@ -69,9 +69,13 @@ struct EngineMetrics {
     std::uint64_t dropped_frames = 0; ///< Cumulative real-time ring-buffer underruns since last reset.
 };
 
-/// Simple attack/release one-pole envelope. Lock-free via atomic `value`.
+/// One-pole attack/release envelope for use on the audio thread only.
+/// `value` is a plain float — not atomic. All reads and writes happen
+/// exclusively on the audio thread inside `read_audio_stereo`. The UI thread
+/// communicates resets via `RealtimeRunner::reset_env_trigger_`, an atomic
+/// bool that the audio thread exchanges-to-consume.
 struct ExponentialEnvelope {
-    std::atomic<float> value{0.0f};
+    float value{0.0f};
     float alpha_attack = 0.0f;
     float alpha_release = 0.0f;
 
@@ -82,13 +86,9 @@ struct ExponentialEnvelope {
         alpha_release = 1.0f - std::exp(-4.60517f / samples);
     }
     float tick(float target) {
-        float current = value.load(std::memory_order_relaxed);
-        float alpha, next;
-        do {
-            alpha = (target > current) ? alpha_attack : alpha_release;
-            next = current + (target - current) * alpha;
-        } while (!value.compare_exchange_weak(current, next, std::memory_order_relaxed));
-        return next;
+        float alpha = (target > value) ? alpha_attack : alpha_release;
+        value = value + (target - value) * alpha;
+        return value;
     }
 };
 
@@ -271,8 +271,14 @@ public:
     /// **Never suppressed by prefill state**, even if a prefill just
     /// completed.
     void trigger_reset() {
-        reset_request_.store(ResetRequest::User, std::memory_order_relaxed);
-        reset_env_.value.store(0.0f, std::memory_order_relaxed);
+        reset_request_.store(ResetRequest::User, std::memory_order_release);
+        // Storing `true` is idempotent: multiple calls before the audio thread
+        // consumes the flag all collapse to a single snap-to-zero on the next
+        // audio callback. The audio thread owns `reset_env_.value`; the flag
+        // is the only cross-thread handshake. `release` pairs with the
+        // `exchange` in read_audio_stereo to give the audio thread a formal
+        // happens-before edge on all stores preceding this one.
+        reset_env_trigger_.store(true, std::memory_order_release);
     }
     /// Rising-edge **transport-initiated** reset trigger (e.g. DAW transport
     /// rewinds to beat 0). Same effect as `trigger_reset()` *unless* the
@@ -283,8 +289,12 @@ public:
     void trigger_transport_reset() {
         ResetRequest expected = ResetRequest::None;
         reset_request_.compare_exchange_strong(expected, ResetRequest::Transport,
-                                                std::memory_order_relaxed);
-        reset_env_.value.store(0.0f, std::memory_order_relaxed);
+                                                std::memory_order_release);
+        // The envelope trigger is stored unconditionally even if the CAS above
+        // failed (a User reset was already pending). This is intentional: the
+        // bool is idempotent, and the User-path trigger_reset() already armed
+        // it. `release` ordering matches trigger_reset(); see comment there.
+        reset_env_trigger_.store(true, std::memory_order_release);
     }
 
     void set_buffer_size(std::size_t cap) {
@@ -363,6 +373,7 @@ private:
     std::array<std::atomic<bool>, 128> note_states_{};
     std::atomic<int> active_note_count_{0};
     ExponentialEnvelope reset_env_;
+    std::atomic<bool> reset_env_trigger_{false};
     ExponentialEnvelope midi_env_;
     std::atomic<float> frame_total_ms_{0};
     std::atomic<std::uint64_t> dropped_frame_count_{0};
