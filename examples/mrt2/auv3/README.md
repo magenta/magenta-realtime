@@ -147,7 +147,7 @@ priming frames generated from the post-prefill state. Real-time
 generation then takes over. The runner deliberately does **not** play
 back audio captured during the prefill loop itself — those would be
 the model's per-step *predictions* on a teacher-forced trajectory, and
-they accumulate audible artifacts at typical prefill lengths 
+they accumulate audible artifacts at typical prefill lengths
 (currently up to 60 seconds).
 
 ### Why token prefill behaves differently

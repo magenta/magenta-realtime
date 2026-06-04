@@ -26,7 +26,7 @@ pre-commit run --all-files
 To create a new application (e.g., `myapp`), you should create a new subdirectory under `examples/` (e.g., `examples/myapp/`) and define its build in a `CMakeLists.txt`.
 
 ### Step A: Link against `magentart::core`
-Your application's `CMakeLists.txt` needs to link against the portable C++ inference library `magentart::core`. This transitively pulls in MLX, TensorFlow Lite, SentencePiece, and the necessary macOS frameworks.
+Your application's `CMakeLists.txt` needs to link against the portable C++ inference library `magentart::core`. This pulls in MLX, TensorFlow Lite, SentencePiece, and the necessary macOS frameworks.
 
 ```cmake
 add_executable(myapp MACOSX_BUNDLE

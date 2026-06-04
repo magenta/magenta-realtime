@@ -115,7 +115,7 @@ uv pip install "cmake<3.28"
 cmake . -B build
 cmake --build build --target hello_mrt2 -j10
 
-# Generate 4s of music (replace <model_name>, e.g. mrt2_small)
+# Generate 4 seconds of music (replace <model_name>, e.g. mrt2_small)
 ./build/examples/hello_mrt2/hello_mrt2 \
     ~/Documents/Magenta/magenta-rt-v2/models/<model_name>/<model_name>.mlxfn \
     ~/Documents/Magenta/magenta-rt-v2/resources \

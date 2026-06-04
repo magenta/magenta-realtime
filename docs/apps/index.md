@@ -51,11 +51,6 @@ cmake --build build --target <deploy-target> -j10
 | Jam               | `deploy_mrt2_jam`        | `~/Applications/MRT2 - Jam.app`      |
 | Collider          | `deploy_mrt2_collider`   | `~/Applications/MRT2 - Collider.app` |
 
-```{tip}
-If you hit Corp Airlock SSL errors during the React UI build, run
-`npm config set strict-ssl false` and rebuild.
-```
-
 Each `deploy_*` target signs the bundle with an ad-hoc signature
 (`CODESIGN_IDENTITY=-`), which is fine on your own machine. To run a build on
 another Mac, see [Distributing the macOS apps](distributing.md).

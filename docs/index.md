@@ -22,6 +22,7 @@ Efficient streaming audio generation library on Apple Silicon.
 
 :::{grid-item-card} {octicon}`device-desktop;1.5em;sd-mr-1` Example applications
 AUv3 plugin, standalone app, Jam, and Collider.
+Download them [here](https://magenta.withgoogle.com/mrt2).
 :::
 ::::
 
@@ -63,6 +64,7 @@ apps/standalone_app
 apps/jam_app
 apps/collider
 apps/distributing
+apps/developer
 ```
 
 ```{toctree}

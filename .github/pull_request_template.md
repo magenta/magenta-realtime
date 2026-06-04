@@ -9,7 +9,7 @@ Description.
 ## Local Pytests
 
 > [!NOTE]
-> Use `mrt models init` to download the necessary resources. Then use `mrt checkpoints download` to download `mrt2_small.safetensors`
+> Use `mrt models init` to download the necessary resources. Then use `mrt checkpoints download` to download `mrt2_small.safetensors` and `mrt2_base.safetensors`
 
 I ran
 ```bash
