@@ -1,0 +1,9 @@
+# Sphinx-related requirements for building the docs (locally and in CI).
+sphinx
+sphinx-book-theme>=1.0.1
+myst-nb
+myst-parser[linkify]
+sphinx-copybutton
+sphinx-design
+# Avoiding an issue with the collapsible sidebar.
+pydata-sphinx-theme<0.16.0

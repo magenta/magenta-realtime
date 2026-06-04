@@ -1,25 +1,25 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+# cache/junk
+*.pyc
+.DS_Store
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# dev
 .venv/
+node_modules/
+
+# artifacts
+.coverage
+*.npy
+benchmark_build/
+build/
+dist/
+docs/_build/
+outputs/
+
+# agentic
+AGENTS.md
+.gemini/
+
+# IDE
+.idea
+.vscode/*.json
+*.code-workspace

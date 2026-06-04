@@ -4,14 +4,13 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ==============================================================================
 
 """MusicCoCa model for embedding music *style* (described by text or audio).
 
@@ -34,16 +33,16 @@ import abc
 import dataclasses
 import functools
 import hashlib
+import pathlib
 from typing import Any, List, Optional
 
+from ai_edge_litert.interpreter import Interpreter
 import numpy as np
-import tensorflow as tf
+import sentencepiece
 from typing_extensions import TypeAlias
 
-from . import asset
 from . import audio
-from . import utils
-import sentencepiece as sentencepiece_processor
+from . import paths
 
 BatchText: TypeAlias = List[str]
 BatchAudio: TypeAlias = List[audio.Waveform]
@@ -55,9 +54,11 @@ BatchStyleEmbedding: TypeAlias = np.ndarray
 BatchStyleTokens: TypeAlias = np.ndarray
 
 
-# NOTE: This is the correct ordering to achieve equivalence to reference
-# implementation. Variable names were not properly sorted in SavedModel.
-MUSICCOCA_RVQ_VAR_ORDER = [0, 1, 4, 5, 6, 7, 8, 9, 10, 11, 2, 3]
+def _make_interpreter(model_path: str):
+  """Create a TFLite interpreter."""
+  interp = Interpreter(model_path=model_path)
+  interp.allocate_tensors()
+  return interp
 
 
 @dataclasses.dataclass
@@ -89,35 +90,19 @@ class MusicCoCaBase(abc.ABC):
   def config(self):
     return self._config
 
-  @property
-  @abc.abstractmethod
-  def _rvq_codebooks(self) -> np.ndarray:
-    ...
-
-  @functools.cached_property
-  def rvq_codebooks(self) -> np.ndarray:
-    """Returns the RVQ codebooks."""
-    rvq_codebooks = self._rvq_codebooks
-    if rvq_codebooks.shape != (
-        self.config.rvq_depth,
-        self.config.rvq_codebook_size,
-        self.config.embedding_dim,
-    ):
-      raise ValueError(
-          'rvq_codebooks shape must be equal to (rvq_depth, rvq_codebook_size,'
-          ' style_embedding_dim).'
-      )
-    return rvq_codebooks
-
   @abc.abstractmethod
   def _embed_batch_text(
       self,
       batch_text: BatchText,
+      use_mapper: bool = False,
+      seed: int = 0,
   ) -> BatchStyleEmbedding:
     """Override to embed a batch of text strings.
 
     Args:
       batch_text: A list of text strings of length B.
+      use_mapper: If True, maps text embeddings to audio-space via mapper.
+      seed: Random seed for mapper noise (only used when use_mapper=True).
 
     Returns:
       A batch of style embeddings of shape (B, self.config.embedding_dim).
@@ -139,11 +124,25 @@ class MusicCoCaBase(abc.ABC):
     """
     ...
 
-  def embed_batch_text(self, batch_text: BatchText) -> BatchStyleEmbedding:
+  @abc.abstractmethod
+  def tokenize(
+      self, embeddings: StyleEmbedding | BatchStyleEmbedding
+  ) -> StyleTokens | BatchStyleTokens:
+    """Tokenizes a batch of embeddings using RVQ quantization."""
+    ...
+
+  def embed_batch_text(
+      self,
+      batch_text: BatchText,
+      use_mapper: bool = False,
+      seed: int = 0,
+  ) -> BatchStyleEmbedding:
     """Embeds text into a common embedding space.
 
     Args:
       batch_text: A list of text strings of length B.
+      use_mapper: If True, maps text embeddings to audio-space via mapper.
+      seed: Random seed for mapper noise (only used when use_mapper=True).
 
     Returns:
       A batch of style embeddings of shape (B, self.config.embedding_dim).
@@ -154,7 +153,7 @@ class MusicCoCaBase(abc.ABC):
     # Precaution for users who aren't checking types.
     if isinstance(batch_text, str):
       raise TypeError('Called embed_batch_text with a single text string.')
-    return self._embed_batch_text(batch_text)
+    return self._embed_batch_text(batch_text, use_mapper=use_mapper, seed=seed)
 
   def embed_batch_audio(
       self,
@@ -261,9 +260,19 @@ class MusicCoCaBase(abc.ABC):
       self,
       text_or_audio: TextOrAudio | BatchTextOrAudio,
       pool_across_time: bool = True,
+      use_mapper: bool = False,
+      seed: int = 0,
       **audio_kwargs,
   ) -> StyleEmbedding | BatchStyleEmbedding:
-    """Embeds text or audio into a common embedding space."""
+    """Embeds text or audio into a common embedding space.
+
+    Args:
+      text_or_audio: A text string, audio waveform, or batch of either.
+      pool_across_time: Whether to average audio embeddings across time.
+      use_mapper: If True, maps text embeddings to audio-space via mapper.
+      seed: Random seed for mapper noise (only used when use_mapper=True).
+      **audio_kwargs: Additional kwargs forwarded to embed_batch_audio.
+    """
     # Check if input is a singleton or batch.
     if isinstance(text_or_audio, list):
       batch = True
@@ -292,7 +301,9 @@ class MusicCoCaBase(abc.ABC):
       )
 
     # Embed text.
-    embeddings_text = self.embed_batch_text(batch_text)
+    embeddings_text = self.embed_batch_text(
+        batch_text, use_mapper=use_mapper, seed=seed
+    )
     assert embeddings_text.shape == (
         len(batch_text),
         self.config.embedding_dim,
@@ -326,28 +337,27 @@ class MusicCoCaBase(abc.ABC):
     else:
       return embeddings[0]
 
-  def tokenize(
-      self, embeddings: StyleEmbedding | BatchStyleEmbedding
-  ) -> StyleTokens | BatchStyleTokens:
-    """Tokenizes a batch of embeddings using RVQ quantization."""
-    if embeddings.shape[-1] != self.config.embedding_dim:
-      raise ValueError(
-          f'Embedding dimension must be {self.config.embedding_dim}, got'
-          f' {embeddings.shape[-1]}.'
-      )
-    tokens = utils.rvq_quantization(
-        embeddings.reshape((-1, self.config.embedding_dim)), self.rvq_codebooks
-    )[0]
-    return tokens.reshape(embeddings.shape[:-1] + (self.config.rvq_depth,))
-
   def __call__(self, *args, **kwargs):
     return self.embed(*args, **kwargs)
 
 
-class MusicCoCaV212F(MusicCoCaBase):
-  """A model that embeds audio and text into a common embedding space."""
+class MusicCoCa(MusicCoCaBase):
+  """A model that embeds audio and text into a common embedding space.
 
-  def __init__(self, lazy: bool = True):
+  Uses TFLite interpreters (converted from v1 SavedModels) for inference.
+  Expects the following files in the resource directory:
+    - spm.model              (SentencePiece vocabulary)
+    - text_encoder.tflite    (text → 768-dim embedding)
+    - audio_preprocessor.tflite  (raw audio → preprocessed features)
+    - music_encoder.tflite       (preprocessed features → 768-dim embedding)
+    - pretrained_vector_quantizer.tflite  (768-dim embedding → RVQ tokens)
+  """
+
+  def __init__(
+      self,
+      resource_dir: str | pathlib.Path | None = None,
+      lazy: bool = True,
+  ):
     super().__init__(
         MusicCoCaConfiguration(
             sample_rate=16000,
@@ -357,70 +367,95 @@ class MusicCoCaV212F(MusicCoCaBase):
             rvq_codebook_size=1024,
         )
     )
+    self._resource_dir = pathlib.Path(
+        resource_dir or paths.musiccoca_dir()
+    )
     if not lazy:
       self._vocab  # pylint: disable=pointless-statement
-      self._encoder  # pylint: disable=pointless-statement
-      self._rvq_codebooks  # pylint: disable=pointless-statement
+      self._text_encoder  # pylint: disable=pointless-statement
+      self._audio_preprocessor  # pylint: disable=pointless-statement
+      self._music_encoder  # pylint: disable=pointless-statement
+      self._quantizer  # pylint: disable=pointless-statement
       self.tokenize(self.embed('foo'))  # warm start
 
-  @property
-  def _encoder_path(self) -> str:
-    return 'savedmodels/musiccoca_mv212f_cpu_novocab'
-
-  @property
-  def _vocab_path(self) -> str:
-    return 'vocabularies/musiccoca_mv212f_vocab.model'
-
-  @property
-  def _rvq_codebooks_path(self) -> str:
-    return 'savedmodels/musiccoca_mv212_quant'
-
-  @functools.cached_property
-  def _encoder(self) -> Any:
-    with tf.device('/cpu:0'):
-      return utils.load_model_cached(
-          'tf',
-          asset.fetch(self._encoder_path, is_dir=True),
-      )
+  # ---------------------------------------------------------------------------
+  # Lazy-loaded TFLite interpreters
+  # ---------------------------------------------------------------------------
 
   @functools.cached_property
   def _vocab(self) -> Any:
-    sp = sentencepiece_processor.SentencePieceProcessor()
-    sp.Load(asset.fetch(self._vocab_path))
+    spm_path = self._resource_dir / 'spm.model'
+    if not spm_path.exists():
+      raise FileNotFoundError(f'SentencePiece model not found at {spm_path}')
+    sp = sentencepiece.SentencePieceProcessor()
+    sp.Load(str(spm_path))
     return sp
 
   @functools.cached_property
-  def _rvq_codebooks(self) -> np.ndarray:
-    path = asset.fetch(self._rvq_codebooks_path, is_dir=True)
-    var_path = f'{path}/variables/variables'
-    result = np.zeros(
-        (
-            self.config.rvq_depth,
-            self.config.rvq_codebook_size,
-            self.config.embedding_dim,
-        ),
-        dtype=np.float32,
-    )
-    for k, v_name in enumerate(MUSICCOCA_RVQ_VAR_ORDER):
-      var = tf.train.load_variable(
-          var_path, f'variables/{v_name}/.ATTRIBUTES/VARIABLE_VALUE'
-      )
-      result[k] = var.T
-    return result
+  def _text_encoder(self) -> Any:
+    path = self._resource_dir / 'text_encoder.tflite'
+    if not path.exists():
+      raise FileNotFoundError(f'Text encoder not found at {path}')
+    return _make_interpreter(str(path))
+
+  @functools.cached_property
+  def _audio_preprocessor(self) -> Any:
+    path = self._resource_dir / 'audio_preprocessor.tflite'
+    if not path.exists():
+      raise FileNotFoundError(f'Audio preprocessor not found at {path}')
+    return _make_interpreter(str(path))
+
+  @functools.cached_property
+  def _music_encoder(self) -> Any:
+    path = self._resource_dir / 'music_encoder.tflite'
+    if not path.exists():
+      raise FileNotFoundError(f'Music encoder not found at {path}')
+    return _make_interpreter(str(path))
+
+  @functools.cached_property
+  def _quantizer(self) -> Any:
+    path = self._resource_dir / 'pretrained_vector_quantizer.tflite'
+    if not path.exists():
+      raise FileNotFoundError(f'Vector quantizer not found at {path}')
+    return _make_interpreter(str(path))
+
+  @functools.cached_property
+  def _mapper(self) -> Any:
+    path = self._resource_dir / 'mapper.tflite'
+    if not path.exists():
+      raise FileNotFoundError(f'Mapper not found at {path}')
+    return _make_interpreter(str(path))
+
+  # ---------------------------------------------------------------------------
+  # Text embedding
+  # ---------------------------------------------------------------------------
 
   def _embed_batch_text(
       self,
       batch_text: BatchText,
+      use_mapper: bool = False,
+      seed: int = 0,
   ) -> BatchStyleEmbedding:
-    # Load MusicCoCa encoder.
-    emb_text = lambda x, y: self._encoder.signatures['embed_text'](
-        inputs_0=x, inputs_0_1=y
-    )['contrastive_txt_embed']
-
-    # Embed text.
-    embeddings = []
     max_text_length = 128
     target_sos_id = 1
+    interpreter = self._text_encoder
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Identify which input is int32 (ids) vs float32 (paddings).
+    id_idx = -1
+    pad_idx = -1
+    for detail in input_details:
+      if detail['dtype'] == np.int32:
+        id_idx = detail['index']
+        id_shape = detail['shape']
+      elif detail['dtype'] == np.float32:
+        pad_idx = detail['index']
+        pad_shape = detail['shape']
+    if id_idx == -1 or pad_idx == -1:
+      raise ValueError('Could not find required inputs in text encoder')
+
+    embeddings = []
     for s in batch_text:
       # text => lowercase => ids and paddings
       labels = self._vocab.EncodeAsIds(s.lower())
@@ -435,32 +470,113 @@ class MusicCoCaV212F(MusicCoCaBase):
       # pad ids to the length of max_text_length with pad value 0
       ids = ids + [0] * (max_text_length - len(ids))
       ids = np.array(ids, dtype=np.int32)
-      ids = tf.reshape(ids, (1, -1))
-      paddings = 1.0 - tf.sequence_mask(
-          num_tokens, maxlen=max_text_length, dtype=tf.float32
-      )
-      paddings = tf.reshape(paddings, (1, -1))
-      # ids and paddings => embeddings
-      with tf.device('/cpu:0'):
-        embeddings.append(emb_text(ids, paddings).numpy()[0])
+      paddings = np.ones(max_text_length, dtype=np.float32)
+      paddings[:num_tokens] = 0.0
+
+      interpreter.set_tensor(id_idx, ids.reshape(id_shape))
+      interpreter.set_tensor(pad_idx, paddings.reshape(pad_shape))
+      interpreter.invoke()
+
+      emb = interpreter.get_tensor(output_details[0]['index'])
+      emb = emb.flatten().astype(np.float32)
+
+      if use_mapper:
+        mapper = self._mapper
+        mapper_input_details = mapper.get_input_details()
+        mapper_output_details = mapper.get_output_details()
+        rng = np.random.RandomState(seed)
+        noise = rng.randn(*emb.shape).astype(np.float32)
+        mapper.set_tensor(
+            mapper_input_details[0]['index'],
+            emb.reshape(mapper_input_details[0]['shape']),
+        )
+        mapper.set_tensor(
+            mapper_input_details[1]['index'],
+            noise.reshape(mapper_input_details[1]['shape']),
+        )
+        mapper.invoke()
+        emb = mapper.get_tensor(
+            mapper_output_details[0]['index']
+        ).flatten().astype(np.float32)
+        emb = emb / np.linalg.norm(emb)
+
+      embeddings.append(emb)
+
     return np.array(embeddings)
+
+  # ---------------------------------------------------------------------------
+  # Audio embedding
+  # ---------------------------------------------------------------------------
 
   def _embed_batch_clips(
       self,
       batch_clips: np.ndarray,
   ) -> BatchStyleEmbedding:
-    # Load MusicCoCa encoder.
-    emb_audio = lambda x: self._encoder.signatures['embed_music'](inputs_0=x)[
-        'contrastive_music_embed'
-    ]
+    prep = self._audio_preprocessor
+    enc = self._music_encoder
+    prep_input_details = prep.get_input_details()
+    prep_output_details = prep.get_output_details()
+    enc_input_details = enc.get_input_details()
+    enc_output_details = enc.get_output_details()
 
-    # Embed audio.
+    prep_input_shape = prep_input_details[0]['shape']
+    prep_input_size = int(np.prod(prep_input_shape))
+
     embeddings = []
-    for c in batch_clips:
-      # TODO(kehanghan): support bs>1 in SavedModel?
-      with tf.device('/cpu:0'):
-        embeddings.append(emb_audio(tf.constant([c])).numpy()[0])
+    for clip in batch_clips:
+      # Prepare preprocessor input.
+      input_data = np.zeros(prep_input_shape, dtype=np.float32)
+      flat_input = input_data.flatten()
+      n_copy = min(len(clip), prep_input_size)
+      flat_input[:n_copy] = clip[:n_copy]
+      input_data = flat_input.reshape(prep_input_shape)
+
+      # Run audio preprocessor.
+      prep.set_tensor(prep_input_details[0]['index'], input_data)
+      prep.invoke()
+      prep_output = prep.get_tensor(prep_output_details[0]['index'])
+
+      # Run music encoder.
+      enc.set_tensor(enc_input_details[0]['index'], prep_output)
+      enc.invoke()
+      emb = enc.get_tensor(enc_output_details[0]['index'])
+
+      embeddings.append(emb.flatten().astype(np.float32))
+
     return np.array(embeddings)
+
+  # ---------------------------------------------------------------------------
+  # Tokenization via quantizer TFLite
+  # ---------------------------------------------------------------------------
+
+  def tokenize(
+      self, embeddings: StyleEmbedding | BatchStyleEmbedding
+  ) -> StyleTokens | BatchStyleTokens:
+    """Tokenizes embeddings using the pretrained vector quantizer TFLite."""
+    if embeddings.shape[-1] != self.config.embedding_dim:
+      raise ValueError(
+          f'Embedding dimension must be {self.config.embedding_dim}, got'
+          f' {embeddings.shape[-1]}.'
+      )
+    original_shape = embeddings.shape[:-1]
+    flat_embeddings = embeddings.reshape((-1, self.config.embedding_dim))
+
+    q = self._quantizer
+    q_input_details = q.get_input_details()
+    q_output_details = q.get_output_details()
+
+    all_tokens = []
+    for emb in flat_embeddings:
+      q.set_tensor(
+          q_input_details[0]['index'],
+          emb.reshape(q_input_details[0]['shape']),
+      )
+      q.invoke()
+      tokens = q.get_tensor(q_output_details[0]['index'])
+      all_tokens.append(tokens.flatten()[:self.config.rvq_depth])
+
+    result = np.array(all_tokens, dtype=np.int32)
+    return result.reshape(original_shape + (self.config.rvq_depth,))
 
 
 class MockMusicCoCa(MusicCoCaBase):
@@ -474,19 +590,33 @@ class MockMusicCoCa(MusicCoCaBase):
   ):
     super().__init__(config, *args, **kwargs)
 
-  @property
-  def _rvq_codebooks(self) -> np.ndarray:
-    np.random.seed(0)
-    return np.random.randn(
-        self.config.rvq_depth,
+  def tokenize(
+      self, embeddings: StyleEmbedding | BatchStyleEmbedding
+  ) -> StyleTokens | BatchStyleTokens:
+    """Mock tokenization returning deterministic pseudo-random tokens."""
+    if embeddings.shape[-1] != self.config.embedding_dim:
+      raise ValueError(
+          f'Embedding dimension must be {self.config.embedding_dim}, got'
+          f' {embeddings.shape[-1]}.'
+      )
+    seed = int(
+        hashlib.sha256(embeddings.tobytes()).hexdigest(), 16
+    ) % 2**32
+    np.random.seed(seed)
+    return np.random.randint(
+        0,
         self.config.rvq_codebook_size,
-        self.config.embedding_dim,
-    ).astype(np.float32)
+        size=embeddings.shape[:-1] + (self.config.rvq_depth,),
+        dtype=np.int32,
+    )
 
   def _embed_batch_text(
       self,
       batch_text: BatchText,
+      use_mapper: bool = False,
+      seed: int = 0,
   ) -> BatchStyleEmbedding:
+    del use_mapper, seed
     result = []
     for s in batch_text:
       seed = int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16) % 2**32
@@ -508,6 +638,3 @@ class MockMusicCoCa(MusicCoCaBase):
           np.random.randn(self.config.embedding_dim).astype(np.float32)
       )
     return np.array(result)
-
-
-MusicCoCa = MusicCoCaV212F  # Alias to indicate default codepath.

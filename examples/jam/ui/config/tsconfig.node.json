@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.shared.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "rootDir": ".",
+    "outDir": "../dist-types-node"
+  },
+  "include": ["."]
+}

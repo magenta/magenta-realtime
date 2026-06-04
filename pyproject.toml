@@ -1,62 +1,91 @@
-[build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "magenta_rt"
-version = "0.3.0"
-authors = [
-  { name="Google DeepMind" },
-]
-description = "Magenta RT: Real-time music generation"
+name = "magenta-rt"
+description = "Real-time music generation models."
 readme = "README.md"
-license = { file = "LICENSE" }
-requires-python = ">=3.10"
+keywords = ["music", "generation", "real-time", "audio", "mlx", "jax", "depthformer"]
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "Google LLC"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dynamic = ["version"]
+
+# NOTE(vendoring): Once sequence-layers is on PyPI, add "sequence_layers" and
+# remove "typeguard", "jaxtyping", and "recurrentgemma" (pulled in by sequence_layers).
 dependencies = [
-  "aiohttp",
-  "absl-py",
-  "chex",
-  "clu",
-  "flax",
-  "gin-config",
-  "flaxformer @ git+https://github.com/google/flaxformer@399ea3a",
-  "google-cloud-storage",
-  "jax",
-  "jaxlib",
-  "librosa",
-  "numpy",
-  "resampy",
-  "requests",
-  "sentencepiece",
-  "seqio",
-  "soundfile",
-  "tf2jax",
-  "tqdm",
-  "typing-extensions",
+    "ai-edge-litert",
+    "click",
+    "numpy",
+    "scipy",
+    "einops",
+    "safetensors",
+    "typeguard==2.13.3",
+    "jaxtyping",
+    "recurrentgemma[jax]>=1.0.1",
+    "google-cloud-storage",
+    "huggingface_hub",
+    "simple-term-menu",
+    "librosa",
+    "resampy",
+    "sentencepiece",
+    "soundfile",
 ]
 
-[project.optional-dependencies]
-test = [
-  "pytest",
-]
-gpu = [
-  "jax[cuda12]",
-  "t5x[gpu]",
-]
-tpu = [
-  "jax[tpu]==0.8.1",
-  "t5x[tpu]",
-]
+[tool.uv.sources]
+# NOTE(vendoring): submodule moved to magenta_rt/_vendor/sequence-layers.
+# Uncomment for local editable development:
+# sequence_layers = { path = "magenta_rt/_vendor/sequence-layers", editable = true }
 
 [project.urls]
-Homepage = "https://github.com/magenta/magenta-realtime"
+Repository = "https://github.com/magenta/magenta-realtime"
+Issues = "https://github.com/magenta/magenta-realtime/issues"
 
-[tool.setuptools.packages.find]
-where = ["."]
+# NOTE(vendoring): Once sequence-layers is on PyPI, add "sequence-layers[mlx]"
+# to mlx (recurrentgemma can then move back to jax-only).
+[project.optional-dependencies]
+jax = ["jax", "flax", "optax", "jaxtyping", "typing_extensions"]
+mlx = ["mlx", "flax", "typing_extensions"]
+dev = ["jupyter", "ipython", "pytest", "matplotlib", "pytest-cov"]
 
-[tool.setuptools.package-data]
-"magenta_rt" = [
-  "depthformer/configs/*.gin",
-  "colab/static/js/*.js",
-  "colab/static/html/*.html",
-  ]
+# Listener-eval bulk generation
+eval = [
+    "pandas",
+]
+
+[project.scripts]
+mrt = "magenta_rt.cli:main"
+
+[build-system]
+requires = ["flit_core >= 3.12.0, <4"]
+build-backend = "flit_core.buildapi"
+
+# ---------------------------------------------------------------------------
+# Tool configuration
+# ---------------------------------------------------------------------------
+
+[tool.flit.module]
+name = "magenta_rt"
+
+[tool.flit.sdist]
+exclude = ["core/", "examples/", "tools/", "build/", "scripts/", "tests/", "notebooks/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.pyink]
+line-length = 80
+unstable = true
+pyink-indentation = 2
+pyink-use-majority-quotes = true

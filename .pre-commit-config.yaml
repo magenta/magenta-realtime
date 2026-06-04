@@ -1,0 +1,52 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-ast
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.6
+    hooks:
+      - id: insert-license
+        name: insert-license-python
+        files: \.py$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER.txt
+          - --comment-style
+          - '#'
+      - id: insert-license
+        name: insert-license-cpp
+        files: \.(h|cpp|cc|mm|m)$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER.txt
+          - --comment-style
+          - //
+      - id: insert-license
+        name: insert-license-sh
+        files: \.sh$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER_SH.txt
+          - --comment-style
+          - '#'
+      - id: insert-license
+        name: insert-license-tsx
+        files: \.tsx$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER.txt
+          - --comment-style
+          - /**| *| */
+      - id: insert-license
+        name: insert-license-cmake
+        files: (CMakeLists\.txt|.*\.cmake)$
+        args:
+          - --license-filepath
+          - LICENSE_HEADER.txt
+          - --comment-style
+          - '#'
