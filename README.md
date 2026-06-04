@@ -3,7 +3,7 @@
 [![CLI Tests](https://github.com/magenta/magenta-realtime/actions/workflows/cli_tests.yml/badge.svg)](https://github.com/magenta/magenta-realtime/actions/workflows/cli_tests.yml)
 
 > [!NOTE]
-> **Looking for Magenta RealTime v1?** The original model and code have been moved to the [`v1_legacy`](https://github.com/magenta/magenta-realtime/tree/v1_legacy) branch.
+> **Go [here](https://magenta.withgoogle.com/mrt2) for pre-built Apps & Plugins.**
 
 Magenta RealTime 2 (MRT2) is a state-of-the-art open-weights model for real-time music generation. It contains several key components
 * An [open-weights model](https://huggingface.co/google/magenta-realtime-2)
@@ -16,6 +16,9 @@ Future updates will support supervised fine-tuning.
 
 📖 **Full documentation:** https://magenta.github.io/magenta-realtime/
 (or build it locally — see [`docs/README.md`](docs/README.md)).
+
+> [!NOTE]
+> **Looking for Magenta RealTime v1?** The original model and code have been moved to the [`v1_legacy`](https://github.com/magenta/magenta-realtime/tree/v1_legacy) branch.
 
 ## Repo Highlights
 
@@ -66,7 +69,7 @@ uv pip install "magenta-rt[mlx]"
 mrt models init
 # Download the streaming model you want to use
 mrt models download
-# Generate 4s music (change to `mrt2_small` for small model)
+# Generate 4 seconds of music (change to `mrt2_small` for small model)
 mrt mlx generate --prompt "disco funk" --duration 4.0 --model=mrt2_base
 ```
 
@@ -92,7 +95,7 @@ uv pip install "cmake<3.28"
 cmake . -B build
 cmake --build build --target hello_mrt2 -j10
 
-# Generate 4s music
+# Generate 4 seconds of music
 ./build/examples/hello_mrt2/hello_mrt2 \
     ~/Documents/Magenta/magenta-rt-v2/models/mrt2_base/mrt2_base.mlxfn \
     ~/Documents/Magenta/magenta-rt-v2/resources \

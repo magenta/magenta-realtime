@@ -2,13 +2,13 @@
 
 **JAX:**
 ```bash
-# Generate 4s audio
+# Generate 4 seconds of audio
 mrt jax generate
 ```
 
 **MLX:**
 ```bash
-# Generate 4s audio
+# Generate 4 seconds of audio
 mrt mlx generate --bits=8
 ```
 
