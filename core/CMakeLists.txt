@@ -57,3 +57,11 @@ add_executable(numpy_random_state_test
     src/numpy_random_state_test.cpp
 )
 target_include_directories(numpy_random_state_test PRIVATE src)
+
+# Standalone test for ExponentialEnvelope tick() arithmetic and the
+# atomic-bool reset trigger pattern introduced in fix/audio-thread-envelope-cas-removal.
+# Run under ThreadSanitizer (-fsanitize=thread) to verify race-freedom.
+add_executable(envelope_reset_test
+    src/envelope_reset_test.cpp
+)
+target_compile_features(envelope_reset_test PRIVATE cxx_std_20)
