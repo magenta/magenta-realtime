@@ -1,0 +1,54 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  # ── 1. Build the sdist + wheel ──────────────────────────────────────
+  build:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive          # vendored sequence-layers
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION=$(python -c "import re, pathlib; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('magenta_rt/__init__.py').read_text()).group(1))")
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v$TAG does not match __version__=$PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 2. Publish to PyPI via Trusted Publisher (OIDC) ─────────────────
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi                    # GitHub Environment you'll create
+    permissions:
+      id-token: write                    # required for OIDC / Trusted Publisher
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
