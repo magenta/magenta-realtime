@@ -41,6 +41,7 @@
 /// Objective-C autorelease pool per iteration, which we wrap portably in the
 /// .cpp via `magentart::detail::AutoreleasePool`).
 
+#include <magentart/envelope.h>
 #include <magentart/mlx_engine.h>
 #include <magentart/ring_buffer.h>
 
@@ -69,28 +70,7 @@ struct EngineMetrics {
     std::uint64_t dropped_frames = 0; ///< Cumulative real-time ring-buffer underruns since last reset.
 };
 
-/// One-pole attack/release envelope for use on the audio thread only.
-/// `value` is a plain float — not atomic. All reads and writes happen
-/// exclusively on the audio thread inside `read_audio_stereo`. The UI thread
-/// communicates resets via `RealtimeRunner::reset_env_trigger_`, an atomic
-/// bool that the audio thread exchanges-to-consume.
-struct ExponentialEnvelope {
-    float value{0.0f};
-    float alpha_attack = 0.0f;
-    float alpha_release = 0.0f;
-
-    void set_attack_samples(float samples) {
-        alpha_attack = 1.0f - std::exp(-4.60517f / samples);
-    }
-    void set_release_samples(float samples) {
-        alpha_release = 1.0f - std::exp(-4.60517f / samples);
-    }
-    float tick(float target) {
-        float alpha = (target > value) ? alpha_attack : alpha_release;
-        value = value + (target - value) * alpha;
-        return value;
-    }
-};
+// ExponentialEnvelope is defined in envelope.h (included above).
 
 class RealtimeRunner {
 public:

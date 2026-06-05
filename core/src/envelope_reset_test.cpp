@@ -22,9 +22,9 @@
 //     exercised concurrently. Run this binary under ThreadSanitizer to catch
 //     any race on `env.value` that would indicate a broken ownership model.
 //
-// This file is standalone: it mirrors the ExponentialEnvelope definition from
-// realtime_runner.h and the consume pattern from read_audio_stereo so it can
-// build without the full MLX/TFLite link (same model as numpy_random_state_test).
+// This file is standalone: it includes envelope.h directly (no MLX/TFLite
+// link required) to test the real ExponentialEnvelope definition and the
+// atomic-bool trigger pattern from read_audio_stereo.
 //
 // Usage:
 //   ./envelope_reset_test             -- normal run, all tests should pass
@@ -32,31 +32,14 @@
 //                                        both tests should fail, proving the
 //                                        assertions actually catch real bugs
 
+#include <magentart/envelope.h>
+
 #include <atomic>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <thread>
 
-// Mirrors ExponentialEnvelope in core/include/magentart/realtime_runner.h.
-// Keep in sync if the struct changes.
-struct ExponentialEnvelope {
-    float value{0.0f};
-    float alpha_attack  = 0.0f;
-    float alpha_release = 0.0f;
-
-    void set_attack_samples(float samples) {
-        alpha_attack = 1.0f - std::exp(-4.60517f / samples);
-    }
-    void set_release_samples(float samples) {
-        alpha_release = 1.0f - std::exp(-4.60517f / samples);
-    }
-    float tick(float target) {
-        float alpha = (target > value) ? alpha_attack : alpha_release;
-        value = value + (target - value) * alpha;
-        return value;
-    }
-};
+using magentart::core::ExponentialEnvelope;
 
 // ---- Test 1: tick() arithmetic -----------------------------------------------
 

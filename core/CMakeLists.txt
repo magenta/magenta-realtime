@@ -65,3 +65,4 @@ add_executable(envelope_reset_test
     src/envelope_reset_test.cpp
 )
 target_compile_features(envelope_reset_test PRIVATE cxx_std_20)
+target_include_directories(envelope_reset_test PRIVATE include)
