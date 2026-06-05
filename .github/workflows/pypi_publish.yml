@@ -42,9 +42,9 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment: pypi                    # GitHub Environment you'll create
+    environment: pypi
     permissions:
-      id-token: write                    # required for OIDC / Trusted Publisher
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
