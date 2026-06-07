@@ -659,7 +659,7 @@ bool MLXEngine::Impl::load_prefill_model(const char *spectrostream_mlxfn_path,
 //
 // Pipeline:
 //   1. Pad/truncate caller audio to the encoder's traced fixed shape
-//      (kEncoderInputSamples = 2880000 = 60 s).
+//      (kEncoderInputSamples = 1344000 = 28 s).
 //   2. Run the SpectroStream encoder → [1, 700, 16] RVQ tokens.
 //   3. Trim `trim_front_frames` from the start and `trim_back_frames`
 //      from the end of the token sequence; the kept range feeds the
@@ -725,11 +725,11 @@ bool MLXEngine::Impl::prefill_state(
 
   try {
     // The exported SpectroStream encoder is traced with a fixed input
-    // shape of `(1, kEncoderInputSamples, 2)` (about 28 s at 48 kHz),
+    // shape of `(1, kEncoderInputSamples, 2)` (28 s at 48 kHz),
     // so we must always pass exactly that many samples. Audio shorter
     // than that is zero-padded; longer audio is truncated. Tokens
     // corresponding to padded samples are excluded by the trim below.
-    constexpr int kEncoderInputSamples = 2880000;
+    constexpr int kEncoderInputSamples = 1344000;
     const int caller_audio_frames =
         num_samples / static_cast<int>(kFrameSamples);
     const int caller_audio_samples =
@@ -888,7 +888,7 @@ bool MLXEngine::Impl::ensure_silent_tokens(
   }
   try {
     // Encode a fully-silent 28 s buffer (the encoder's traced shape).
-    constexpr int kEncoderInputSamples = 2880000;
+    constexpr int kEncoderInputSamples = 1344000;
     std::vector<float> silent_input(kEncoderInputSamples * 2, 0.0f);
     mx::array waveform = mx::array(silent_input.data(),
                                    {1, kEncoderInputSamples, 2}, mx::float32);
