@@ -58,7 +58,7 @@ holds a saved state.
   full model reload. The factory snapshot is held in memory as a shallow
   `mx::array` copy, so this is cheap (no disk I/O, no recompilation).
 - **Custom** (upload icon, then replay icon) — **Audio Prefill**. Upload
-  a `.wav`/audio file (up to 60 s; the SpectroStream encoder is traced
+  a `.wav`/audio file (up to 28 seconds; the SpectroStream encoder is traced
   at that fixed length); it's encoded to RVQ tokens, the unreliable
   head/tail of the sequence is trimmed (1 s each side), and the tokens
   are fed through the transformer one frame at a time.
@@ -148,7 +148,7 @@ generation then takes over. The runner deliberately does **not** play
 back audio captured during the prefill loop itself — those would be
 the model's per-step *predictions* on a teacher-forced trajectory, and
 they accumulate audible artifacts at typical prefill lengths
-(currently up to 60 seconds).
+(currently up to 28 seconds).
 
 ### Why token prefill behaves differently
 

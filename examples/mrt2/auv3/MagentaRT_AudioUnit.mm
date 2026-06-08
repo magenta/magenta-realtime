@@ -2053,7 +2053,7 @@ static BOOL paramIsBool(AUParameterAddress address) {
                                 // (1, 1344000, 2) = 28 s @ 48 kHz. We read
                                 // up to that and let the engine handle the
                                 // exact length internally.
-                                int maxFrames = 1344000; // 28s at 48kHz. todo: change to 60 seconds
+                                int maxFrames = 1344000; // 28s at 48kHz.
                                 std::vector<float> samples(maxFrames * 2, 0.0f);
 
                                 AudioBufferList bufferList;
