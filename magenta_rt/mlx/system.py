@@ -232,7 +232,7 @@ class MagentaRT2System:
         )
       checkpoint = _CHECKPOINT_REGISTRY[size]
 
-    checkpoint_path = paths.checkpoints_dir() / checkpoint
+    checkpoint_path = paths.resolve_checkpoint(checkpoint)
     logger.info('Loading checkpoint: %s', checkpoint_path)
     load_weights(
         self._sampler, checkpoint_path,
@@ -529,7 +529,7 @@ class MagentaRT2SystemMlxfn:
       warmup_steps: Number of warmup inference steps.
     """
     model_name = size or paths.DEFAULT_MODEL_NAME
-    model_path = paths.models_dir() / model_name
+    model_path = paths.resolve_model_dir(model_name)
 
     basename = model_path.name
     mlxfn_path = str(model_path / f'{basename}.mlxfn')
