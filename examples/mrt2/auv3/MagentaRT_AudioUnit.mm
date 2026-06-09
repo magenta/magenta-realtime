@@ -488,6 +488,27 @@ static BOOL isDevServerRunning(void) {
                             });
                         }
                         NSLog(@"MagentaRT_AU: Successfully auto-loaded model from bookmark.");
+
+                        // Load SpectroStream encoder: model dir → external spectrostream → bundle
+                        NSString* parentDir = [mlxfnPath stringByDeletingLastPathComponent];
+                        NSString* spectrostreamPath = [parentDir stringByAppendingPathComponent:@"spectrostream_encoder.mlxfn"];
+                        if ([[NSFileManager defaultManager] fileExistsAtPath:spectrostreamPath]) {
+                            NSLog(@"MagentaRT_AU: Auto-loading spectrostream encoder from model dir: %@", spectrostreamPath.lastPathComponent);
+                            self->_engine.load_prefill_model(spectrostreamPath.UTF8String, nullptr);
+                        } else {
+                            std::string extPath = magentart::paths::get_spectrostream_dir() + "/spectrostream_encoder.mlxfn";
+                            NSString* extNSPath = [NSString stringWithUTF8String:extPath.c_str()];
+                            if ([[NSFileManager defaultManager] fileExistsAtPath:extNSPath]) {
+                                NSLog(@"MagentaRT_AU: Auto-loading spectrostream encoder from external path: %@", extNSPath);
+                                self->_engine.load_prefill_model(extNSPath.UTF8String, nullptr);
+                            } else {
+                                NSString* fallbackPath = [[NSBundle bundleForClass:[self class]] pathForResource:@"spectrostream_encoder" ofType:@"mlxfn"];
+                                if (fallbackPath) {
+                                    NSLog(@"MagentaRT_AU: Auto-loading spectrostream encoder from bundle: %@", fallbackPath.lastPathComponent);
+                                    self->_engine.load_prefill_model(fallbackPath.UTF8String, nullptr);
+                                }
+                            }
+                        }
                     } else {
                         NSLog(@"MagentaRT_AU: Failed to auto-load model from bookmark.");
                     }
@@ -2032,7 +2053,7 @@ static BOOL paramIsBool(AUParameterAddress address) {
                                 // (1, 1344000, 2) = 28 s @ 48 kHz. We read
                                 // up to that and let the engine handle the
                                 // exact length internally.
-                                int maxFrames = 1344000; // 28s at 48kHz. todo: change to 60 seconds
+                                int maxFrames = 1344000; // 28s at 48kHz.
                                 std::vector<float> samples(maxFrames * 2, 0.0f);
 
                                 AudioBufferList bufferList;

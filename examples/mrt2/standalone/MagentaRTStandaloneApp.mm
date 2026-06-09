@@ -662,6 +662,26 @@ using magentart::core::RealtimeRunner;
                 }
             }
 
+            // Load SpectroStream encoder: model dir → external spectrostream → bundle
+            NSString* spectrostreamPath = [parentDir stringByAppendingPathComponent:@"spectrostream_encoder.mlxfn"];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:spectrostreamPath]) {
+                NSLog(@"MagentaRT Standalone: Auto-loading spectrostream encoder from model dir: %@", spectrostreamPath.lastPathComponent);
+                self->_engine.load_prefill_model(spectrostreamPath.UTF8String, nullptr);
+            } else {
+                std::string extPath = magentart::paths::get_spectrostream_dir() + "/spectrostream_encoder.mlxfn";
+                NSString* extNSPath = [NSString stringWithUTF8String:extPath.c_str()];
+                if ([[NSFileManager defaultManager] fileExistsAtPath:extNSPath]) {
+                    NSLog(@"MagentaRT Standalone: Auto-loading spectrostream encoder from external path: %@", extNSPath);
+                    self->_engine.load_prefill_model(extNSPath.UTF8String, nullptr);
+                } else {
+                    NSString* fallbackPath = [[NSBundle mainBundle] pathForResource:@"spectrostream_encoder" ofType:@"mlxfn"];
+                    if (fallbackPath) {
+                        NSLog(@"MagentaRT Standalone: Auto-loading spectrostream encoder from bundle: %@", fallbackPath.lastPathComponent);
+                        self->_engine.load_prefill_model(fallbackPath.UTF8String, nullptr);
+                    }
+                }
+            }
+
             NSArray* savedPrompts = [[NSUserDefaults standardUserDefaults] arrayForKey:@"MagentaRT_Prompts"];
 
             // Restore persisted advanced controls (buffer size, temperature, etc.)

@@ -153,11 +153,11 @@ def export_spectrostream_cmd(output, checkpoint):
         codes = ss.waveform_to_codes_layer.layer(x)
         return codes.values
 
-    # Dummy waveform for tracing: 1 batch, 60 seconds at 48 kHz, stereo.
+    # Dummy waveform for tracing: 1 batch, 28 seconds at 48 kHz, stereo.
     #
     # We've observed that when performing continuation with low
     # CFG-MusicCoCa, low temperature, and small top-k (intending to strictly
-    # imitate the prefill context), a longer prefill (up to 60s) tends to
+    # imitate the prefill context), a longer prefill (up to 28 seconds) tends to
     # yield better continuation quality, even beyond the model's strict
     # receptive field (~19.7 s). To test this more concretely, try
     # `examples/hello_mrt2`.
@@ -166,7 +166,7 @@ def export_spectrostream_cmd(output, checkpoint):
     # (`MLXEngine::Impl::prefill_state` uses 25/25 for the mrt2_base STFT
     # config; different SpectroStream hyperparameters could shift the
     # head/tail transient zones).
-    dummy_waveform = mx.zeros((1, 48_000 * 60, 2), dtype=mx.float32)
+    dummy_waveform = mx.zeros((1, 48_000 * 28, 2), dtype=mx.float32)
 
     os.makedirs(os.path.dirname(output), exist_ok=True)
     mx.export_function(output, spectrostream_encode, dummy_waveform)
