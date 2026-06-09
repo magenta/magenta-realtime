@@ -87,17 +87,18 @@ def _gcs_uri(suffix: str) -> str:
 
 def _get_storage_client():
     """Get a GCS storage client, or exit with a helpful error."""
-    from google.auth.exceptions import DefaultCredentialsError  # noqa: E402
     from google.cloud import storage  # noqa: E402
 
+    # Disable mTLS to prevent "No module named 'OpenSSL'" errors when pyOpenSSL
+    # is not installed in the environment.
+    os.environ.setdefault("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false")
+
     try:
-        return storage.Client(project=_GCP_PROJECT)
-    except DefaultCredentialsError:
+        return storage.Client.create_anonymous_client()
+    except Exception as e:
         click.echo(
             click.style("Error: ", fg="red", bold=True)
-            + "Google Cloud credentials not found.\n"
-            "Please configure Application Default Credentials by running:\n"
-            "  gcloud auth application-default login",
+            + f"Failed to initialize GCS client: {e}",
             err=True,
         )
         sys.exit(1)
