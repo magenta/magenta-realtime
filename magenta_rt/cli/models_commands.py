@@ -406,14 +406,21 @@ _source_option = click.option(
 )
 
 
-@models.command()
-@click.option(
+_download_path_option = click.option(
     "--download-path",
-    type=click.Path(),
+    # Destination dir: don't require it to already exist/be readable. It may be
+    # created later on download, and an existing-but-unreadable dir (e.g. macOS
+    # TCC denying os.access(R_OK) on ~/Documents) would otherwise fail click's
+    # readability probe at parse time even though the path is usable.
+    type=click.Path(readable=False),
     default=str(_DEFAULT_DOWNLOAD_PATH),
     show_default=True,
     help="Root directory for downloaded assets.",
 )
+
+
+@models.command()
+@_download_path_option
 @_source_option
 def init(download_path, source):
     """Fetch all shared model resources (musiccoca, spectrostream)."""
@@ -439,13 +446,7 @@ def init(download_path, source):
 
 @models.command()
 @click.argument("name", required=False, default=None)
-@click.option(
-    "--download-path",
-    type=click.Path(),
-    default=str(_DEFAULT_DOWNLOAD_PATH),
-    show_default=True,
-    help="Root directory for downloaded assets.",
-)
+@_download_path_option
 @_source_option
 def download(name, download_path, source):
     """Download an exported model by NAME.
@@ -502,13 +503,7 @@ def checkpoints():
 
 @checkpoints.command()
 @click.argument("name", required=False, default=None)
-@click.option(
-    "--download-path",
-    type=click.Path(),
-    default=str(_DEFAULT_DOWNLOAD_PATH),
-    show_default=True,
-    help="Root directory for downloaded assets.",
-)
+@_download_path_option
 @_source_option
 def download(name, download_path, source):
     """Download a raw model checkpoint by NAME.
