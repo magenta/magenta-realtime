@@ -70,13 +70,14 @@ const sliderToSpeed = (t: number) => Math.pow(t, SPEED_CURVE_EXP) * DEFAULT_PHYS
 const speedToSlider = (s: number) => Math.pow(s / DEFAULT_PHYSICS_SPEED, 1 / SPEED_CURVE_EXP);
 
 /** Build an equilateral triangle of prompts centered in the canvas, with `pad` px above/below. */
-function buildInitialLayout(w: number, h: number, pad = 60) {
-  const cx = w / 2;
+function buildInitialLayout(rect: DOMRect, pad = 60) {
+  const cx = rect.left + rect.width / 2;
+  const h = rect.height;
   // For an equilateral triangle: top vertex at pad, bottom vertices at h-pad
   // top = cy - R = pad, bottom = cy + R/2 = h - pad
   // Solving: R = 2*(h - 2*pad)/3, cy = pad + R
   const r = (2 * (h - 2 * pad)) / 3;
-  const cy = pad + r;
+  const cy = rect.top + pad + r;
   // 3 vertices at -90°, 30°, 150° (top, bottom-right, bottom-left)
   const angles = [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6];
   const prompts: PromptNode[] = INITIAL_PROMPT_LABELS.map((label, i) => ({
@@ -132,17 +133,17 @@ function App() {
     drumless: false,
   });
 
-  // ─── Measure prompt surface and build initial layout ─────────────────
-  const promptSurfaceRef = useRef<HTMLDivElement>(null);
+  // ─── Measure collision boundary and build initial layout ─────────────────
+  const collisionBoundaryRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (layoutInitialized.current) return;
     // Defer to next frame so flex layout (header + bottom bar) has settled
     requestAnimationFrame(() => {
-      const el = promptSurfaceRef.current;
+      const el = collisionBoundaryRef.current;
       if (!el || layoutInitialized.current) return;
-      const { width, height } = el.getBoundingClientRect();
-      if (width > 0 && height > 0) {
-        const layout = buildInitialLayout(width, height);
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const layout = buildInitialLayout(rect);
         setPrompts(layout.prompts);
         setListener(layout.listener);
         layoutInitialized.current = true;
@@ -345,16 +346,15 @@ function App() {
             localLoadingPromptIds.current.add(prev[existing].id);
             return prev.map((p, i) => i === existing ? { ...p, label: state.prompt } : p);
           }
-          const el = promptSurfaceRef.current;
-          const w = el ? el.getBoundingClientRect().width : 800;
-          const h = el ? el.getBoundingClientRect().height : 600;
+          const el = collisionBoundaryRef.current;
+          const rect = el ? el.getBoundingClientRect() : new DOMRect(0, 0, 800, 600);
           const pad = 60;
           const newId = nextIdRef.current++;
           localLoadingPromptIds.current.add(newId);
           return [...prev, {
             id: newId,
-            x: pad + Math.random() * (w - pad * 2),
-            y: pad + Math.random() * (h - pad * 2),
+            x: rect.left + pad + Math.random() * (rect.width - pad * 2),
+            y: rect.top + pad + Math.random() * (rect.height - pad * 2),
             label: state.prompt,
             colorIndex: nextColorRef.current++,
             isAudio: true,
@@ -455,7 +455,7 @@ function App() {
   // ─── Render ────────────────────────────────────────────────────────
 
   return (
-    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
+    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)', position: 'relative' }}>
       {/* Transport — top left */}
       <div style={{
         position: 'fixed',
@@ -523,29 +523,30 @@ function App() {
         <AudioMeter leftLevel={audioLevel} rightLevel={audioLevel} width="120px" height="14px" />
       </div> */}
 
+      <PromptSurface
+        collisionBoundaryRef={collisionBoundaryRef}
+        prompts={promptsWithLoading}
+        listener={listener}
+        selectedBallId={selectedBallId}
+        onPromptMove={handlePromptMove}
+        onListenerMove={handleListenerMove}
+        onBallSelect={handleBallSelect}
+        onPromptAdd={handlePromptAdd}
+        onPromptTextChange={handleTextChange}
+        onPromptDelete={handlePromptDelete}
+        physicsSpeed={physicsSpeed}
+        onFirstThrow={handleFirstThrow}
+        isPlaying={isPlaying}
+        audioLevel={audioLevel}
+        debug={debug}
+        collisions={collisionsEnabled}
+      />
+
       {/* Top spacer — keeps prompt surface below fixed header elements */}
       <div style={{ height: 'calc(var(--app-padding) + 56px + var(--app-padding))', flexShrink: 0 }} />
 
-      {/* PromptSurface */}
-      <div ref={promptSurfaceRef} style={{ flex: 1, position: 'relative' }}>
-        <PromptSurface
-          prompts={promptsWithLoading}
-          listener={listener}
-          selectedBallId={selectedBallId}
-          onPromptMove={handlePromptMove}
-          onListenerMove={handleListenerMove}
-          onBallSelect={handleBallSelect}
-          onPromptAdd={handlePromptAdd}
-          onPromptTextChange={handleTextChange}
-          onPromptDelete={handlePromptDelete}
-          physicsSpeed={physicsSpeed}
-          onFirstThrow={handleFirstThrow}
-          isPlaying={isPlaying}
-          audioLevel={audioLevel}
-          debug={debug}
-          collisions={collisionsEnabled}
-        />
-      </div>
+      {/* Collision Boundary Placeholder */}
+      <div ref={collisionBoundaryRef} style={{ flex: 1, position: 'relative', visibility: 'hidden', pointerEvents: 'none' }} />
 
       {/* TimingIndicator — fixed bottom-left */}
       <div style={{
@@ -559,7 +560,7 @@ function App() {
       </div>
 
       {/* ── Bottom bar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: 'var(--app-padding)', flexShrink: 0, gap: '12px', position: 'relative', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: 'var(--app-padding)', flexShrink: 0, gap: '12px', position: 'relative', justifyContent: 'flex-end', pointerEvents: 'none' }}>
 
         {/* Upload Audio Prompt */}
         <Tooltip title="Upload audio prompt">
@@ -568,6 +569,7 @@ function App() {
             sx={{
               width: 40,
               height: 40,
+              pointerEvents: 'auto',
             }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>upload</span>
@@ -578,17 +580,18 @@ function App() {
         <Tooltip title="Add prompt">
           <IconButton
             onClick={() => {
-              const el = promptSurfaceRef.current;
+              const el = collisionBoundaryRef.current;
               if (!el) return;
-              const { width, height } = el.getBoundingClientRect();
+              const rect = el.getBoundingClientRect();
               const pad = 60;
-              const x = pad + Math.random() * (width - pad * 2);
-              const y = pad + Math.random() * (height - pad * 2);
+              const x = rect.left + pad + Math.random() * (rect.width - pad * 2);
+              const y = rect.top + pad + Math.random() * (rect.height - pad * 2);
               handlePromptAdd(x, y);
             }}
             sx={{
               width: 40,
               height: 40,
+              pointerEvents: 'auto',
             }}
           >
             <span className="material-icons" style={{ fontSize: '20px' }}>add</span>
