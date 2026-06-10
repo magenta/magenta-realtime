@@ -895,7 +895,7 @@ export function PromptSurface({
                 transform: 'translate(-50%, -100%)',
               }}
             >
-              <input
+              <textarea
                 ref={!p.isAudio && isJustCreated ? (el) => {
                   if (el) {
                     el.focus();
@@ -905,15 +905,19 @@ export function PromptSurface({
                 } : undefined}
                 readOnly={p.isAudio}
                 style={{
-                  padding: '2px 12px',
-                  borderRadius: '9999px',
+                  padding: '4px 12px',
+                  borderRadius: '15px',
                   fontSize: '13px',
                   fontWeight: 500,
+                  width: 'max-content',
+                  maxWidth: '180px',
+                  maxHeight: '100px',
+                  resize: 'none',
                   textAlign: 'center',
                   outline: 'none',
+                  textWrap: 'pretty',
                   margin: 0,
                   border: 'none',
-                  whiteSpace: 'nowrap',
                   pointerEvents: p.isAudio ? 'none': 'auto',
                   cursor: p.isAudio ? 'default' : 'text',
                   color: 'white',
@@ -926,6 +930,7 @@ export function PromptSurface({
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"
+                maxLength={1000}
                 onFocus={() => {
                   if (p.isAudio) return;
                   preEditRef.current = p.label;
