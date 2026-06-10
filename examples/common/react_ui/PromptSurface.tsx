@@ -65,6 +65,7 @@ export interface PromptNode {
   label: string;
   colorIndex: number;
   isAudio?: boolean;
+  loading?: boolean;
 }
 
 export interface ListenerNode {
@@ -293,6 +294,8 @@ export function PromptSurface({
   const trashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isDraggingPrompt, setIsDraggingPrompt] = useState(false);
   const [isOverTrash, setIsOverTrash] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
   // Sorted ball keys (farthest-first) — only recomputed on mouse move
   const [sortOrder, setSortOrder] = useState<string[]>([]);
 
@@ -848,6 +851,19 @@ export function PromptSurface({
                 strokeWidth={1}
                 pointerEvents="none"
               />
+              {p.loading && (
+                <circle
+                  className="prompt-loading-ring"
+                  cx={p.x}
+                  cy={p.y}
+                  r={config.promptRadius + 4}
+                  fill="none"
+                  stroke={activeColor}
+                  strokeWidth={2}
+                  strokeDasharray={`${(config.promptRadius + 4) * Math.PI * 0.4} ${(config.promptRadius + 4) * Math.PI * 1.6}`}
+                  pointerEvents="none"
+                />
+              )}
               <circle
                 className="draggable"
                 cx={p.x}
@@ -925,7 +941,7 @@ export function PromptSurface({
                   fontFamily: "'Google Sans Text', system-ui, sans-serif",
                   fieldSizing: 'content',
                 } as React.CSSProperties}
-                value={p.isAudio ? `♪ ${p.label}` : p.label}
+                value={p.id === editingId ? (p.isAudio ? `♪ ${editingText}` : editingText) : (p.isAudio ? `♪ ${p.label}` : p.label)}
                 spellCheck={false}
                 autoComplete="off"
                 autoCorrect="off"
@@ -934,17 +950,23 @@ export function PromptSurface({
                 onFocus={() => {
                   if (p.isAudio) return;
                   preEditRef.current = p.label;
+                  setEditingId(p.id);
+                  setEditingText(p.label);
                   onBallSelect(null);
                 }}
                 onBlur={() => {
                   if (p.isAudio) return;
-                  if (!p.label.trim()) {
+                  const trimmed = editingText.trim();
+                  if (!trimmed) {
                     onPromptTextChange(p.id, preEditRef.current);
+                  } else if (trimmed !== preEditRef.current) {
+                    onPromptTextChange(p.id, trimmed);
                   }
+                  setEditingId(null);
                 }}
                 onChange={(e) => {
                   if (p.isAudio) return;
-                  onPromptTextChange(p.id, e.target.value);
+                  setEditingText(e.target.value);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {

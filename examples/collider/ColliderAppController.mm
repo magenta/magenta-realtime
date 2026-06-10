@@ -221,6 +221,7 @@ static BOOL isDevServerRunning(void) {
             @"frameMs": @(m.transformer_ms),
             @"bufferAvail": @(m.buffer_available),
             @"bufferCap": @(m.buffer_capacity),
+            @"textEncoderStatus": @(engine->get_text_encoder_status()),
             @"droppedFrames": @(m.dropped_frames)
         };
     }

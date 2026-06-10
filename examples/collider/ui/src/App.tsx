@@ -115,7 +115,8 @@ function App() {
 
 
   // Metrics state
-  const [metrics, setMetrics] = useState({ frameMs: 0, bufferAvail: 0, bufferCap: 0, droppedFrames: 0 });
+  const [metrics, setMetrics] = useState({ frameMs: 0, bufferAvail: 0, bufferCap: 0, textEncoderStatus: 0, promptStatuses: [] as number[], droppedFrames: 0 });
+  const localLoadingPromptIds = useRef<Set<number>>(new Set());
 
   // Settings Drawer states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -179,6 +180,7 @@ function App() {
   promptsRef.current = prompts;
   const listenerRef = useRef(listener);
   listenerRef.current = listener;
+  const lastSentTextsRef = useRef<string[]>([]);
 
   // ─── Bridge: send prompts + weights to native ──────────────────────
 
@@ -202,6 +204,16 @@ function App() {
         }
       });
     }
+    const currentTexts = data.map(d => d.text);
+    const textsChanged = lastSentTextsRef.current.length === 0 ||
+      currentTexts.some((t, idx) => t !== lastSentTextsRef.current[idx]);
+
+    if (lastSentTextsRef.current.length > 0 && textsChanged) {
+      waitingForEncoder.current = true;
+      startEncoderTimeout();
+    }
+    lastSentTextsRef.current = currentTexts;
+
     post({ type: 'textPrompts', value: data });
   }, []);
 
@@ -213,6 +225,19 @@ function App() {
   // TFLite quantizer with redundant invocations.
   const sendThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSendTimeRef = useRef(0);
+  const waitingForEncoder = useRef(false);
+  const encoderTimeoutRef = useRef<number | null>(null);
+
+  const startEncoderTimeout = () => {
+    if (encoderTimeoutRef.current) clearTimeout(encoderTimeoutRef.current);
+    encoderTimeoutRef.current = window.setTimeout(() => {
+      if (waitingForEncoder.current) {
+        waitingForEncoder.current = false;
+        setMetrics(m => ({ ...m }));
+      }
+      encoderTimeoutRef.current = null;
+    }, 2000);
+  };
 
   useEffect(() => {
     const THROTTLE_MS = 100; // ~10 Hz
@@ -280,7 +305,19 @@ function App() {
       }
 
       if (state.metrics !== undefined) {
-        setMetrics(m => ({ ...m, ...state.metrics }));
+        setMetrics(m => {
+          const next = { ...m, ...state.metrics };
+          if (next.textEncoderStatus === 1) {
+            waitingForEncoder.current = false;
+            if (encoderTimeoutRef.current) {
+              clearTimeout(encoderTimeoutRef.current);
+              encoderTimeoutRef.current = null;
+            }
+          } else if (next.textEncoderStatus === 2 || next.textEncoderStatus === 0) {
+            localLoadingPromptIds.current.clear();
+          }
+          return next;
+        });
       }
       if (state.params !== undefined) {
         setParamsState(p => {
@@ -305,14 +342,17 @@ function App() {
         setPrompts(prev => {
           const existing = prev.findIndex(p => p.isAudio);
           if (existing !== -1) {
+            localLoadingPromptIds.current.add(prev[existing].id);
             return prev.map((p, i) => i === existing ? { ...p, label: state.prompt } : p);
           }
           const el = promptSurfaceRef.current;
           const w = el ? el.getBoundingClientRect().width : 800;
           const h = el ? el.getBoundingClientRect().height : 600;
           const pad = 60;
+          const newId = nextIdRef.current++;
+          localLoadingPromptIds.current.add(newId);
           return [...prev, {
-            id: nextIdRef.current++,
+            id: newId,
             x: pad + Math.random() * (w - pad * 2),
             y: pad + Math.random() * (h - pad * 2),
             label: state.prompt,
@@ -362,10 +402,12 @@ function App() {
       deckIndexRef.current = 0;
     }
     const label = SHUFFLED_SUGGESTIONS[deckIndexRef.current++];
+    localLoadingPromptIds.current.add(id);
     setPrompts(prev => [...prev, { id, x, y, label, colorIndex }]);
   }, []);
 
   const handleTextChange = useCallback((id: number, text: string) => {
+    localLoadingPromptIds.current.add(id);
     setPrompts(prev => prev.map(p => p.id === id ? { ...p, label: text } : p));
   }, []);
 
@@ -380,6 +422,35 @@ function App() {
   }, []);
 
   const handleFirstThrow = useCallback(() => setHasThrown(true), []);
+
+  // Encoder loading state — true when prompts are being encoded
+  const isEncoderLoading = metrics.textEncoderStatus === 1 || waitingForEncoder.current;
+
+  // Calculate per-prompt loading state
+  const promptsWithLoading = prompts.map(p => {
+    let engineIndex = -1;
+    const audioIdx = prompts.findIndex(x => x.isAudio);
+    if (audioIdx !== -1) {
+      if (p.isAudio) {
+        engineIndex = 0;
+      } else {
+        const nonAudioPromptsBefore = prompts.slice(0, prompts.indexOf(p)).filter(x => !x.isAudio);
+        engineIndex = 1 + nonAudioPromptsBefore.length;
+      }
+    } else {
+      engineIndex = prompts.indexOf(p);
+    }
+
+    const status = metrics.promptStatuses?.[engineIndex] ?? 0;
+    const isEngineLoading = status === 1;
+    const isLocalLoading = localLoadingPromptIds.current.has(p.id);
+    const isPromptLoading = isEngineLoading || (isLocalLoading && isEncoderLoading);
+
+    return {
+      ...p,
+      loading: isPromptLoading,
+    };
+  });
 
   // ─── Render ────────────────────────────────────────────────────────
 
@@ -458,7 +529,7 @@ function App() {
       {/* PromptSurface */}
       <div ref={promptSurfaceRef} style={{ flex: 1, position: 'relative' }}>
         <PromptSurface
-          prompts={prompts}
+          prompts={promptsWithLoading}
           listener={listener}
           selectedBallId={selectedBallId}
           onPromptMove={handlePromptMove}
