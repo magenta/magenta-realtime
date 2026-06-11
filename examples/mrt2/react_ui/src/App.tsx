@@ -265,6 +265,11 @@ export default function App() {
   };
 
   const handleNodeDeleted = (id: number) => {
+    setSurfacePositions(prev => {
+      const next = [...prev];
+      next.splice(id, 1);
+      return next;
+    });
     setPrompts(currentPrompts => {
       const next = [...currentPrompts];
       next.splice(id, 1);
