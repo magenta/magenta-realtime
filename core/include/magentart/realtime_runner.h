@@ -201,6 +201,9 @@ public:
     bool get_audio_embedding(int index, float* out) const {
         return engine_.get_audio_embedding(index, out);
     }
+    bool reblend_musiccoca_tokens(const float* weights, int count, const float* pca_coeffs = nullptr, int pca_count = 0) {
+        return engine_.reblend_musiccoca_tokens(weights, count, pca_coeffs, pca_count);
+    }
     /// @}
 
     /// @name Output control @{
