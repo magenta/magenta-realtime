@@ -788,6 +788,10 @@ export default function App() {
                     audioLevel={0}
                     physicsEnabled={false}
                     active={mixMode === 'surface'}
+                    promptRadius={15}
+                    listenerRadius={15}
+                    labelFontSize={11}
+                    labelMaxWidth="150px"
                   />
                 </div>
 
