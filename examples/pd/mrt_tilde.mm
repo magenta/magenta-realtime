@@ -336,6 +336,42 @@ void mrt_pca(t_mrt* x, t_symbol*, int argc, t_atom* argv) {
     x->engine->set_pca_coeff(axis, v);
 }
 
+void mrt_style_embedding(t_mrt* x, t_symbol* s, int argc, t_atom* argv) {
+    // Expect: set_style_embedding <slot> <f0> <f1> ... <f767>
+    // Total arguments: 1 (slot) + 768 (embedding values) = 769
+    if (argc != 769 || argv[0].a_type != A_FLOAT) {
+        pd_error(x, "mrt2~: set_style_embedding requires <slot> and 768 floats");
+        return;
+    }
+
+    int slot = static_cast<int>(atom_getfloat(&argv[0]));
+    if (slot < 0 || slot >= kNumPromptSlots) {
+        pd_error(x, "mrt2~: slot %d out of range", slot);
+        return;
+    }
+
+    std::vector<float> embedding(768);
+    for (int i = 0; i < 768; ++i) {
+        if (argv[i + 1].a_type != A_FLOAT) {
+            pd_error(x, "mrt2~: argument %d is not a float", i + 1);
+            return;
+        }
+        embedding[i] = atom_getfloat(&argv[i + 1]);
+    }
+
+    // 1. Set the raw embedding in the engine
+    x->engine->set_audio_embedding(slot, embedding.data());
+
+    // 2. Trigger reblend so the engine immediately incorporates the new embedding
+    // We update weights array to ensure this slot is active (weight 1.0)
+    (*x->prompt_weight)[slot] = 1.0f;
+    
+    // Call reblend.
+    x->engine->reblend_musiccoca_tokens(x->prompt_weight->data(), kNumPromptSlots);
+
+    post("mrt2~: set raw style embedding for slot %d", slot);
+}
+
 void mrt_pcafile(t_mrt* x, t_symbol*, int argc, t_atom* argv) {
     if (argc < 1 || argv[0].a_type != A_SYMBOL) {
         pd_error(x, "mrt2~: pcafile requires a path");
@@ -404,6 +440,8 @@ extern "C" void mrt2_tilde_setup(void) {
 
     class_addmethod(s_mrt_class, reinterpret_cast<t_method>(mrt_pca),
                     gensym("pca"),          A_GIMME, 0);
+    class_addmethod(s_mrt_class, reinterpret_cast<t_method>(mrt_style_embedding),
+                    gensym("set_style_embedding"), A_GIMME, 0);
     class_addmethod(s_mrt_class, reinterpret_cast<t_method>(mrt_pcafile),
                     gensym("pcafile"),      A_GIMME, 0);
 }
