@@ -137,7 +137,10 @@ export default function App() {
     rightLevel: 0,
     droppedFrames: 0,
     transportFlags: -1,
+    textEncoderStatusColors: [] as number[],
   });
+
+  const [localLoadingIndices, setLocalLoadingIndices] = useState<Set<number>>(new Set());
 
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -211,6 +214,7 @@ export default function App() {
       label: p.text,
       colorIndex: p.colorIndex,
       isAudio: p.isAudio,
+      loading: (metrics.textEncoderStatusColors?.[i] === 1) || localLoadingIndices.has(i),
     };
   });
 
@@ -340,6 +344,7 @@ export default function App() {
   };
 
   const handlePromptTextChange = (idx: number, text: string) => {
+    setLocalLoadingIndices(prev => new Set(prev).add(idx));
     setPrompts(currentPrompts => {
       const next = [...currentPrompts];
       next[idx] = { ...next[idx], text };
@@ -367,6 +372,7 @@ export default function App() {
   };
 
   const handlePromptUpload = (idx: number) => {
+    setLocalLoadingIndices(prev => new Set(prev).add(idx));
     // Tell native host to open file picker and load audio for this prompt index
     postMessage({ type: 'loadAudioPrompt', index: idx });
   };
@@ -431,6 +437,17 @@ export default function App() {
       }
       if (state.metrics) {
         setMetrics(m => ({ ...m, ...state.metrics }));
+        if (state.metrics.textEncoderStatusColors) {
+          const colors: number[] = state.metrics.textEncoderStatusColors;
+          setLocalLoadingIndices(prev => {
+            let changed = false;
+            const next = new Set(prev);
+            colors.forEach((status, idx) => {
+              if (status !== 1 && next.has(idx)) { next.delete(idx); changed = true; }
+            });
+            return changed ? next : prev;
+          });
+        }
       }
       if (state.audioLevels) {
         setMetrics(m => ({ ...m, leftLevel: state.audioLevels.left, rightLevel: state.audioLevels.right }));
@@ -817,6 +834,7 @@ export default function App() {
                       weight={p.weight}
                       isEmpty={!p.text && !p.isAudio}
                       isAudio={p.isAudio}
+                      loading={activeNodes[idx]?.loading}
                       onTextChange={(newText) => handlePromptTextChange(idx, newText)}
                       onWeightChange={(newWeight) => handlePromptWeightChange(idx, newWeight)}
                       onRemove={() => handlePromptRemove(idx)}
