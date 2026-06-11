@@ -165,9 +165,10 @@ export default function App() {
   const keyboardBaseNote = useRef(KEYBOARD_MIDI_BASE_DEFAULT);
   const pressedKeys = useRef<Map<string, number>>(new Map());
   const [octaveOffset, setOctaveOffset] = useState(0);
-  const [prompts, setPrompts] = useState<Array<{ text: string; weight: number; isAudio: boolean }>>(() => {
-    return SHUFFLED_SUGGESTIONS.slice(0, 2).map(text => ({ text, weight: 1.0, isAudio: false }));
+  const [prompts, setPrompts] = useState<Array<{ text: string; weight: number; isAudio: boolean; colorIndex: number }>>(() => {
+    return SHUFFLED_SUGGESTIONS.slice(0, 2).map((text, i) => ({ text, weight: 1.0, isAudio: false, colorIndex: i }));
   });
+  const nextColorIndex = useRef(2);
 
   const promptSurfaceRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 340, h: 275 });
@@ -208,7 +209,7 @@ export default function App() {
       x: pos.x * stageSize.w,
       y: (1.0 - pos.y) * stageSize.h,
       label: p.text,
-      colorIndex: i,
+      colorIndex: p.colorIndex,
       isAudio: p.isAudio,
     };
   });
@@ -258,7 +259,7 @@ export default function App() {
     const y_norm = 1.0 - (y_pixel / stageSize.h);
     setSurfacePositions(prev => [...prev, { x: x_norm, y: y_norm }]);
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text: "", weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text: "", weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
@@ -387,7 +388,7 @@ export default function App() {
     const ry = 0.2 + Math.random() * 0.6;
     setSurfacePositions(prev => [...prev, { x: rx, y: ry }]);
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text, weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text, weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
@@ -399,7 +400,7 @@ export default function App() {
     // Add a placeholder entry, then trigger the upload for that new slot
     const nextIdx = prompts.length;
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text: '', weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text: '', weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
@@ -457,7 +458,7 @@ export default function App() {
       if (state.textPrompts !== undefined) {
         // Filter to only active entries (non-empty text) — dynamic length array
         const active = state.textPrompts
-          .map((p: any) => ({ text: p.text || '', weight: p.weight || 0, isAudio: p.isAudio || false }))
+          .map((p: any) => ({ text: p.text || '', weight: p.weight || 0, isAudio: p.isAudio || false, colorIndex: nextColorIndex.current++ }))
           .filter((p: any) => p.text.length > 0);
         setPrompts(active);
       }
@@ -812,7 +813,7 @@ export default function App() {
                     <PromptRow
                       key={idx}
                       text={p.text}
-                      color={ALL_COLORS[idx % ALL_COLORS.length]}
+                      color={ALL_COLORS[p.colorIndex % ALL_COLORS.length]}
                       weight={p.weight}
                       isEmpty={!p.text && !p.isAudio}
                       isAudio={p.isAudio}
