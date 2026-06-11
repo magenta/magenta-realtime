@@ -19,7 +19,7 @@ import { Turtle, Rabbit } from 'lucide-react';
 import IconButton from '@mui/material/IconButton';
 import TuneIcon from '@mui/icons-material/Tune';
 import Tooltip from '@mui/material/Tooltip';
-import { ModelSelector, SettingsPanel, TimingIndicator, AudioMeter, ResourceOnboardingModal, TransportControls, PromptSurface, calculateWeights, ALL_SUGGESTIONS, DEFAULT_TEMPERATURE, DEFAULT_TOPK, DEFAULT_CFG_MUSICCOCA, DEFAULT_CFG_DRUMS, DEFAULT_UNMASK_WIDTH, DEFAULT_BUFFER_SIZE, DEFAULT_VOLUME, COLLIDER_CFG_NOTES, COLLIDER_CFG_MUSICCOCA } from '@magenta-rt/common';
+import { ModelSelector, SettingsPanel, TimingIndicator, AudioMeter, ResourceOnboardingModal, TransportControls, PromptSurface, calculateWeights, ALL_SUGGESTIONS, DEFAULT_TEMPERATURE, DEFAULT_TOPK, DEFAULT_CFG_MUSICCOCA, DEFAULT_CFG_DRUMS, DEFAULT_UNMASK_WIDTH, COLLIDER_DEFAULT_BUFFER_SIZE, DEFAULT_VOLUME, COLLIDER_CFG_NOTES, COLLIDER_CFG_MUSICCOCA } from '@magenta-rt/common';
 import type { PromptNode, ListenerNode } from '@magenta-rt/common';
 
 
@@ -128,7 +128,7 @@ function App() {
     cfgmusiccoca: COLLIDER_CFG_MUSICCOCA,
     cfgdrums: DEFAULT_CFG_DRUMS,
     unmaskwidth: DEFAULT_UNMASK_WIDTH,
-    buffersize: DEFAULT_BUFFER_SIZE,
+    buffersize: COLLIDER_DEFAULT_BUFFER_SIZE,
     volume: DEFAULT_VOLUME,
     drumless: false,
   });
@@ -161,7 +161,7 @@ function App() {
     sendParamChange(4, COLLIDER_CFG_NOTES);        // cfgnotes (Collider default)
     sendParamChange(48, DEFAULT_CFG_DRUMS);        // cfgdrums
     sendParamChange(7, DEFAULT_UNMASK_WIDTH);      // unmaskwidth
-    sendParamChange(8, DEFAULT_BUFFER_SIZE);       // buffersize
+    sendParamChange(8, COLLIDER_DEFAULT_BUFFER_SIZE); // buffersize
     sendParamChange(39, 0);                        // drumless = false
   };
 

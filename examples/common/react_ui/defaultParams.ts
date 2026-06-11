@@ -44,3 +44,6 @@ export const COLLIDER_CFG_NOTES = 0.0;
 
 /** Collider style */
 export const COLLIDER_CFG_MUSICCOCA = 5.0;
+
+/** Collider default buffer size (value 2 maps to 8192 samples). */
+export const COLLIDER_DEFAULT_BUFFER_SIZE = 2;
