@@ -869,7 +869,7 @@ export default function App() {
 
           {/* ── A: Prompt input bar ── */}
           {(() => {
-            if (prompts.length >= MAX_PROMPTS) return null;
+            const atMax = prompts.length >= MAX_PROMPTS;
             return (
               <div style={{
                 display: 'flex',
@@ -877,6 +877,8 @@ export default function App() {
                 gap: '10px',
                 padding: '10px 16px',
                 flexShrink: 0,
+                opacity: atMax ? 0.45 : 1,
+                pointerEvents: atMax ? 'none' : 'auto',
               }}>
                 {/* Input bar container */}
                 <div
@@ -890,8 +892,9 @@ export default function App() {
                 >
                   <input
                     type="text"
-                    placeholder="Type a prompt or upload a sample"
-                    value={newPromptText}
+                    placeholder={atMax ? `${MAX_PROMPTS} prompts maximum` : 'Type a prompt or upload a sample'}
+                    value={atMax ? '' : newPromptText}
+                    disabled={atMax}
                     onChange={(e) => setNewPromptText(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newPromptText.trim()) {
@@ -916,6 +919,7 @@ export default function App() {
                         }
                         setNewPromptText(SHUFFLED_SUGGESTIONS[deckIndexRef.current++]);
                       }}
+                      disabled={atMax}
                       sx={{
                         width: '36px',
                         height: '36px',
@@ -935,6 +939,7 @@ export default function App() {
                   <Tooltip title="Upload audio prompt" arrow placement="top">
                     <IconButton
                       onClick={handleUploadNewPrompt}
+                      disabled={atMax}
                       sx={{
                         width: '36px',
                         height: '36px',
@@ -961,7 +966,7 @@ export default function App() {
                       handleAddPromptWithText(newPromptText.trim());
                     }
                   }}
-                  disabled={!newPromptText.trim()}
+                  disabled={atMax || !newPromptText.trim()}
                   sx={{
                     width: 36,
                     height: 36,
