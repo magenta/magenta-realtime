@@ -97,6 +97,11 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeNotes, setActiveNotes] = useState<number[]>([]);
   const [noteActivityCounter, setNoteActivityCounter] = useState(0);
+  // Dynamic MIDI keyboard range — expands by octave when notes fall outside
+  const DEFAULT_MIDI_START = 48; // C3
+  const DEFAULT_MIDI_END = 72;   // C5
+  const [midiRangeStart, setMidiRangeStart] = useState(DEFAULT_MIDI_START);
+  const [midiRangeEnd, setMidiRangeEnd] = useState(DEFAULT_MIDI_END);
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
   const [downloadProgress, setDownloadProgress] = useState<any>(null);
@@ -406,6 +411,20 @@ function App() {
             }
             return prev;
           });
+
+          // Expand MIDI keyboard range by octaves if notes fall outside
+          for (const note of state.activeNotes) {
+            if (note < midiRangeStart) {
+              // Expand downward: snap to the octave boundary at or below the note
+              const newStart = Math.floor(note / 12) * 12;
+              setMidiRangeStart(prev => Math.min(prev, newStart));
+            }
+            if (note > midiRangeEnd) {
+              // Expand upward: snap to the octave boundary at or above the note
+              const newEnd = Math.ceil((note + 1) / 12) * 12;
+              setMidiRangeEnd(prev => Math.max(prev, newEnd));
+            }
+          }
         }
       }
 
@@ -656,8 +675,8 @@ function App() {
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
-  const keyboardStartNote = keyboardMidiEnabled ? 60 : 48;
-  const keyboardEndNote = keyboardMidiEnabled ? 76 : 72;
+  const keyboardStartNote = keyboardMidiEnabled ? 60 : midiRangeStart;
+  const keyboardEndNote = keyboardMidiEnabled ? 76 : midiRangeEnd;
   const noModel = !modelName || modelName === 'No model loaded';
 
   // Current preset list for the rocker display
