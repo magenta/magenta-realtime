@@ -261,13 +261,17 @@ export default function App() {
     if (prompts.length >= MAX_PROMPTS) return;
     const x_norm = x_pixel / stageSize.w;
     const y_norm = 1.0 - (y_pixel / stageSize.h);
+
+    const randomIdx = Math.floor(Math.random() * ALL_SUGGESTIONS.length);
+    const suggestedText = ALL_SUGGESTIONS[randomIdx];
+
     setSurfacePositions(prev => {
       const next = [...prev];
       next[prompts.length] = { x: x_norm, y: y_norm };
       return next;
     });
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text: "", weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
+      const next = [...currentPrompts, { text: suggestedText, weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
