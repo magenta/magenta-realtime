@@ -44,3 +44,19 @@ export const COLLIDER_CFG_NOTES = 0.0;
 
 /** Collider style */
 export const COLLIDER_CFG_MUSICCOCA = 5.0;
+
+// ─── Model display labels ────────────────────────────────────────────────────
+
+/**
+ * Optional suffixes shown next to model names in the UI.
+ * Keys are folder names (without .mlxfn extension).
+ */
+export const MODEL_LABELS: Record<string, string> = {
+  'mrt2_base': '(M4 Pro / M2 Max or higher)',
+};
+
+/** Strip .mlxfn extension for consistent model name lookup. */
+export const getModelSuffix = (name: string): string | undefined => {
+  const key = name.endsWith('.mlxfn') ? name.replace('.mlxfn', '') : name;
+  return MODEL_LABELS[key];
+};
