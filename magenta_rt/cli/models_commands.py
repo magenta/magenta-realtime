@@ -48,13 +48,19 @@ from magenta_rt import paths
 _DEFAULT_SOURCE = os.environ.get('MAGENTA_RT_DOWNLOAD_SOURCE', 'hf')
 _HF_TOKEN = os.environ.get('HF_TOKEN', None)
 
+# Opt-in: warm/reuse the global HuggingFace cache instead of downloading into the
+# local MAGENTA_HOME folder. Default off to preserve current behavior.
+_DEFAULT_USE_HF_CACHE = (
+    os.environ.get('MAGENTA_RT_USE_HF_CACHE', '').lower() in ('1', 'true', 'yes')
+)
+
 # GCS settings
 _GCP_PROJECT = "brain-magenta"
 _GCS_BUCKET = "magenta-rt-public"
 _GCS_CHECKPOINTS_PREFIX = "magenta-rt-2"
 
-# HuggingFace settings
-_HF_REPO_NAME = 'google/magenta-realtime-2'
+# HuggingFace settings (single source of truth shared with the asset resolver).
+_HF_REPO_NAME = paths.HF_REPO_ID
 
 # Resources synced by `mrt models init`.
 # Paths are the same in both GCS (under _GCS_CHECKPOINTS_PREFIX) and HF repo.
@@ -189,17 +195,21 @@ def _list_gcs_dirs(gcs_prefix: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _download_hf(repo_path: str, local_path: Path) -> None:
+def _download_hf(repo_path: str, local_path: Path, *, use_cache: bool = False) -> None:
     """Download a directory from HuggingFace repo to a local directory.
 
     Args:
         repo_path: Path within the HF repo (e.g. "resources/musiccoca").
         local_path: Local destination that should mirror repo_path
             (e.g. ~/Documents/Magenta/magenta-rt-v2/resources/musiccoca).
+        use_cache: If True, populate the global HuggingFace cache instead of
+            writing into ``local_path`` (so an existing cache is reused and the
+            files are shared with `hf download`).
     """
     import huggingface_hub  # noqa: E402
 
-    local_path.mkdir(parents=True, exist_ok=True)
+    if not use_cache:
+        local_path.mkdir(parents=True, exist_ok=True)
 
     # hf_hub_download saves to local_dir/filename.  Since filename is the
     # full repo-relative path (e.g. "resources/musiccoca/file.bin"),
@@ -231,14 +241,21 @@ def _download_hf(repo_path: str, local_path: Path) -> None:
                 prefix_with_slash = repo_path
             relative_path = rel_to_repo[len(prefix_with_slash):]
 
-            click.echo(f"  Downloading {relative_path} …")
-
-            huggingface_hub.hf_hub_download(
-                repo_id=_HF_REPO_NAME,
-                filename=rel_to_repo,
-                local_dir=str(local_dir),
-                token=_HF_TOKEN,
-            )
+            if use_cache:
+                click.echo(f"  Caching {relative_path} …")
+                huggingface_hub.hf_hub_download(
+                    repo_id=_HF_REPO_NAME,
+                    filename=rel_to_repo,
+                    token=_HF_TOKEN,
+                )
+            else:
+                click.echo(f"  Downloading {relative_path} …")
+                huggingface_hub.hf_hub_download(
+                    repo_id=_HF_REPO_NAME,
+                    filename=rel_to_repo,
+                    local_dir=str(local_dir),
+                    token=_HF_TOKEN,
+                )
 
     except Exception as e:
         click.echo(
@@ -280,12 +297,32 @@ def _list_hf_dirs(repo_path: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _download(source: str, remote_path: str, local_path: Path) -> None:
+def _cache_has(filename: str) -> bool:
+    """True if ``filename`` from the HF repo is already in the global cache."""
+    try:
+        import huggingface_hub  # noqa: E402
+
+        return (
+            huggingface_hub.try_to_load_from_cache(_HF_REPO_NAME, filename)
+            is not None
+        )
+    except Exception:
+        return False
+
+
+def _download(
+    source: str, remote_path: str, local_path: Path, *, use_cache: bool = False
+) -> None:
     """Download from either GCS or HuggingFace."""
     if source == "gcs":
+        if use_cache:
+            click.echo(
+                "  Note: --use-hf-cache has no effect for the GCS source; "
+                "downloading into the local folder."
+            )
         _download_gcs(_gcs_uri(remote_path), local_path)
     elif source == "hf":
-        _download_hf(remote_path, local_path)
+        _download_hf(remote_path, local_path, use_cache=use_cache)
     else:
         click.echo(
             click.style("Error: ", fg="red", bold=True)
@@ -406,6 +443,19 @@ _source_option = click.option(
 )
 
 
+_use_hf_cache_option = click.option(
+    "--use-hf-cache/--no-use-hf-cache",
+    default=_DEFAULT_USE_HF_CACHE,
+    show_default=True,
+    help=(
+        "Reuse/populate the global HuggingFace cache instead of writing into the "
+        "local folder (HuggingFace source only). Lets assets be shared with "
+        "`hf download` and avoids re-downloading. Default off (env: "
+        "MAGENTA_RT_USE_HF_CACHE)."
+    ),
+)
+
+
 @models.command()
 @click.option(
     "--download-path",
@@ -415,14 +465,17 @@ _source_option = click.option(
     help="Root directory for downloaded assets.",
 )
 @_source_option
-def init(download_path, source):
+@_use_hf_cache_option
+def init(download_path, source, use_hf_cache):
     """Fetch all shared model resources (musiccoca, spectrostream)."""
     download_path = Path(download_path)
     source_label = "HuggingFace" if source == "hf" else "GCS"
+    use_cache = use_hf_cache and source == "hf"
+    dest_label = "HuggingFace cache" if use_cache else str(download_path)
 
     click.echo(
         click.style("Initializing model resources", bold=True)
-        + f" from {source_label} → {download_path}"
+        + f" from {source_label} → {dest_label}"
     )
 
     for remote_suffix, local_subdir in _INIT_RESOURCES:
@@ -432,7 +485,7 @@ def init(download_path, source):
             remote_path = remote_suffix
         dst = download_path / local_subdir
         click.echo(f"\n📦 Downloading {click.style(local_subdir, fg='cyan')} …")
-        _download(source, remote_path, dst)
+        _download(source, remote_path, dst, use_cache=use_cache)
 
     click.echo(click.style("\n✓ Init complete.", fg="green", bold=True))
 
@@ -447,7 +500,8 @@ def init(download_path, source):
     help="Root directory for downloaded assets.",
 )
 @_source_option
-def download(name, download_path, source):
+@_use_hf_cache_option
+def download(name, download_path, source, use_hf_cache):
     """Download an exported model by NAME.
 
     If NAME is omitted an interactive picker lists all available models.
@@ -455,6 +509,7 @@ def download(name, download_path, source):
     download_path = Path(download_path)
     models_dir = download_path / "models"
     source_label = "HuggingFace" if source == "hf" else "GCS"
+    use_cache = use_hf_cache and source == "hf"
 
     if name is None:
         # Interactive selection
@@ -465,11 +520,16 @@ def download(name, download_path, source):
             click.echo(f"No models found on {source_label}.")
             return
 
-        # Determine which models are already downloaded locally.
+        # Determine which models are already downloaded locally (or cached).
         downloaded = set()
         if models_dir.exists():
             downloaded = {
                 p.name for p in models_dir.iterdir() if p.is_dir()
+            }
+        if use_cache:
+            downloaded |= {
+                n for n in available
+                if _cache_has(f"{_MODELS_SUBDIR}/{n}/{n}.mlxfn")
             }
 
         name = _interactive_select(available, downloaded)
@@ -482,11 +542,12 @@ def download(name, download_path, source):
     else:
         remote_path = f"{_MODELS_SUBDIR}/{name}"
     dst = models_dir / name
+    dest_label = "HuggingFace cache" if use_cache else str(dst)
     click.echo(
         f"\n📦 Downloading model {click.style(name, fg='cyan')}"
-        f" from {source_label} → {dst} …"
+        f" from {source_label} → {dest_label} …"
     )
-    _download(source, remote_path, dst)
+    _download(source, remote_path, dst, use_cache=use_cache)
     click.echo(click.style(f"\n✓ Model '{name}' downloaded.", fg="green", bold=True))
 
 
@@ -510,7 +571,8 @@ def checkpoints():
     help="Root directory for downloaded assets.",
 )
 @_source_option
-def download(name, download_path, source):
+@_use_hf_cache_option
+def download(name, download_path, source, use_hf_cache):
     """Download a raw model checkpoint by NAME.
 
     If NAME is omitted an interactive picker lists all available checkpoints.
@@ -518,6 +580,7 @@ def download(name, download_path, source):
     download_path = Path(download_path)
     ckpt_dir = download_path / "checkpoints"
     source_label = "HuggingFace" if source == "hf" else "GCS"
+    use_cache = use_hf_cache and source == "hf"
 
     if name is None:
         # Interactive selection
@@ -528,11 +591,16 @@ def download(name, download_path, source):
             click.echo(f"No checkpoints found on {source_label}.")
             return
 
-        # Determine which checkpoints are already downloaded locally.
+        # Determine which checkpoints are already downloaded locally (or cached).
         downloaded = set()
         if ckpt_dir.exists():
             downloaded = {
                 p.name for p in ckpt_dir.iterdir() if p.is_file()
+            }
+        if use_cache:
+            downloaded |= {
+                n for n in available
+                if _cache_has(f"{_CHECKPOINTS_SUBDIR}/{n}")
             }
 
         name = _interactive_select(available, downloaded)
@@ -540,16 +608,18 @@ def download(name, download_path, source):
             click.echo("Cancelled.")
             return
 
-    # Download the single checkpoint file.
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    local_file = ckpt_dir / name
-
-    click.echo(
-        f"\n📦 Downloading checkpoint {click.style(name, fg='cyan')}"
-        f" from {source_label} → {local_file} …"
-    )
-
     if source == "gcs":
+        if use_hf_cache:
+            click.echo(
+                "  Note: --use-hf-cache has no effect for the GCS source; "
+                "downloading into the local folder."
+            )
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        local_file = ckpt_dir / name
+        click.echo(
+            f"\n📦 Downloading checkpoint {click.style(name, fg='cyan')}"
+            f" from {source_label} → {local_file} …"
+        )
         from google.cloud import storage  # noqa: E402
         client = _get_storage_client()
         bucket = client.bucket(_GCS_BUCKET)
@@ -559,12 +629,19 @@ def download(name, download_path, source):
         blob.download_to_filename(str(temp_file))
         temp_file.replace(local_file)
     else:
+        dest_label = "HuggingFace cache" if use_cache else str(ckpt_dir / name)
+        click.echo(
+            f"\n📦 Downloading checkpoint {click.style(name, fg='cyan')}"
+            f" from {source_label} → {dest_label} …"
+        )
         import huggingface_hub  # noqa: E402
-        huggingface_hub.hf_hub_download(
+        hf_kwargs = dict(
             repo_id=_HF_REPO_NAME,
             filename=f"{_CHECKPOINTS_SUBDIR}/{name}",
-            local_dir=str(download_path),
             token=_HF_TOKEN,
         )
+        if not use_cache:
+            hf_kwargs["local_dir"] = str(download_path)
+        huggingface_hub.hf_hub_download(**hf_kwargs)
 
     click.echo(click.style(f"\n✓ Checkpoint '{name}' downloaded.", fg="green", bold=True))
