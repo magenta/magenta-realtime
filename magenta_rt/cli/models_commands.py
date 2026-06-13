@@ -540,6 +540,11 @@ def download(name, download_path, source):
             click.echo("Cancelled.")
             return
 
+    # Accept a bare model name (e.g. "mrt2_small") as well as a full filename;
+    # checkpoints are always .safetensors, mirroring `mrt models download`.
+    if not name.endswith(".safetensors"):
+        name = f"{name}.safetensors"
+
     # Download the single checkpoint file.
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     local_file = ckpt_dir / name
