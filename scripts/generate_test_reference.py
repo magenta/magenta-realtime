@@ -17,7 +17,7 @@
 Runs the JAX depthformer model with compute_dtype=float32, captures
 intermediate values (temporal_inputs, temporal_outputs, depth_logits,
 depth_samples for all 16 RVQ iterations), and saves them as .npy files
-in mlx/testdata/.
+in tests/testdata/.
 
 The MLX test (test_bitlevel_parity.py) uses these golden references to
 verify that the MLX implementation produces matching results. For the
@@ -27,12 +27,15 @@ deterministically across all 16 iterations.
 
 Usage:
   python scripts/generate_test_reference.py
+  python scripts/generate_test_reference.py --model=mrt2_small
+  python scripts/generate_test_reference.py --model=mrt2_base
 
 Prerequisites:
   - JAX and sequence-layers (JAX backend) must be installed
   - The checkpoint file must exist at the expected path
 """
 
+import argparse
 import jax
 from jax import numpy as jnp, random
 import safetensors.flax as safetensors_flax
@@ -58,10 +61,22 @@ NUM_RESERVED_TOKENS = 7  # system.NUM_RESERVED_TOKENS(6) + 1 dropout
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Generate JAX fp32 reference data for MLX bit-level parity tests.')
+    parser.add_argument(
+        '--model', default='mrt2_small', type=str,
+        help="Model variant name (e.g. 'mrt2_base', 'mrt2_small'). Default: mrt2_small",
+    )
+    args = parser.parse_args()
+
     print("GPUs Available:", jax.devices())
 
+    # Look up model class from the registry.
+    model_cls = model.get_model_class(args.model)
+    checkpoint_name = f'{args.model}.safetensors'
+    print(f"Using model={args.model}, checkpoint={checkpoint_name}")
+
     # Float32 compute for parity testing.
-    exp = model.MagentaRT2ModelBase()
+    exp = model_cls()
     exp.compute_dtype = jnp.float32
     depthformer_config = exp.depthformer_config()
     rvq_truncation = exp.spectrostream.rvq_truncation_level
@@ -75,7 +90,7 @@ def main():
     ).make()
 
     # Load weights.
-    checkpoint = paths.resolve_checkpoint(paths.DEFAULT_CHECKPOINT)
+    checkpoint = paths.resolve_checkpoint(checkpoint_name)
     flat_weights = safetensors_flax.load_file(str(checkpoint))
     nested_dict = {tuple(k.split('/')): v for k, v in flat_weights.items()}
     all_params = flaxtu.unflatten_dict(nested_dict)

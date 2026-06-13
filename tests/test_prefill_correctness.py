@@ -39,19 +39,19 @@ from magenta_rt.mlx import load_weights as lw
 from magenta_rt.mlx.export import _flatten_state, _unflatten_state
 from magenta_rt import paths
 
-# TODO: Enable this test in GitHub Actions. It currently skips because it requires
-# a large checkpoint.
+# CI checkpoint: mrt2_small.safetensors (downloaded by the CI workflow).
+_CI_CHECKPOINT = 'mrt2_small.safetensors'
 
 class TestPrefillCorrectness(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        checkpoint_path = paths.resolve_checkpoint(paths.DEFAULT_CHECKPOINT)
+        checkpoint_path = paths.resolve_checkpoint(_CI_CHECKPOINT)
         if not checkpoint_path.exists():
             raise unittest.SkipTest(f"Checkpoint not found: {checkpoint_path}")
 
         print('Building MLX model (compute_dtype=bfloat16)...')
-        mrt_model = model.MagentaRT2ModelBase()
+        mrt_model = model.MagentaRT2ModelSmall()
         mrt_model.compute_dtype = mx.bfloat16
 
         depthformer_config = mrt_model.depthformer_config()
@@ -143,5 +143,4 @@ class TestPrefillCorrectness(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
     unittest.main(verbosity=2)
