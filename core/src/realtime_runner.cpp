@@ -43,10 +43,10 @@ RealtimeRunner::RealtimeRunner() {
         note_states_[i].store(false, std::memory_order_relaxed);
     }
     reset_env_.set_attack_samples(1920.0f);
-    reset_env_.value.store(1.0f, std::memory_order_relaxed);
+    reset_env_.value = 1.0f;
     midi_env_.set_attack_samples(1920.0f);
     midi_env_.set_release_samples(48000.0f);
-    midi_env_.value.store(0.0f, std::memory_order_relaxed);
+    midi_env_.value = 0.0f;
 }
 
 RealtimeRunner::~RealtimeRunner() {
@@ -245,6 +245,15 @@ bool RealtimeRunner::read_audio_stereo(float* destL, float* destR,
 
     bool gate_enabled = midi_gate_enabled_.load(std::memory_order_relaxed);
     float midi_target = (active_note_count_.load(std::memory_order_relaxed) > 0) ? 1.0f : 0.0f;
+
+    // Consume the reset trigger. `acquire` pairs with the `release` stores in
+    // trigger_reset() / trigger_transport_reset(), giving this thread a formal
+    // happens-before edge on everything the UI thread did before arming the
+    // flag. The subsequent write to `reset_env_.value` happens on THIS thread
+    // after the exchange, so single-thread sequencing covers the loop below.
+    if (reset_env_trigger_.exchange(false, std::memory_order_acquire)) {
+        reset_env_.value = 0.0f;
+    }
 
     for (std::size_t i = 0; i < count; ++i) {
         smoothed_gain_ = one_minus_alpha * smoothed_gain_ + alpha * target_gain;
