@@ -130,6 +130,7 @@ function App() {
   const [isAudioPrompt, setIsAudioPrompt] = useState(false);
   const lastSentText = useRef('');
   const promptInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const promptBoxRef = useRef<HTMLDivElement | null>(null);
 
   // Color state
   const [activeColor, setActiveColor] = useState(() => ALL_COLORS[Math.floor(Math.random() * ALL_COLORS.length)]);
@@ -531,12 +532,34 @@ function App() {
     post({ type: 'uiReady' });
     post({ type: 'listRemoteModels' });
 
+    window.focus();
+    if (document.body) {
+      document.body.focus();
+    }
 
     return () => {
       delete (window as any).updateState;
       if (encoderTimeoutRef.current) {
         clearTimeout(encoderTimeoutRef.current);
       }
+    };
+  }, []);
+
+  // Blur prompt text input when clicking outside of it
+  useEffect(() => {
+    const handleGlobalMouseDown = (e: MouseEvent) => {
+      if (
+        promptInputRef.current &&
+        document.activeElement === promptInputRef.current &&
+        promptBoxRef.current &&
+        !promptBoxRef.current.contains(e.target as Node)
+      ) {
+        promptInputRef.current.blur();
+      }
+    };
+    window.addEventListener('mousedown', handleGlobalMouseDown);
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalMouseDown);
     };
   }, []);
 
@@ -845,6 +868,7 @@ function App() {
 
             {/* Prompt Box */}
             <div
+              ref={promptBoxRef}
               className="jam-box"
               onClick={(e) => {
                 if (e.target instanceof Element && e.target.closest('.upload-btn-container')) {
