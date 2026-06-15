@@ -531,13 +531,6 @@ function App() {
     post({ type: 'uiReady' });
     post({ type: 'listRemoteModels' });
 
-    // Auto-focus prompt text input on app mount and place caret at the end
-    if (promptInputRef.current) {
-      const el = promptInputRef.current;
-      el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
-    }
 
     return () => {
       delete (window as any).updateState;
