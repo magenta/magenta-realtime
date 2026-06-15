@@ -233,18 +233,12 @@ function App() {
     sendParamChange(7, solo ? 127 : 0); // unmaskwidth
     setParamsState(p => ({ ...p, unmaskwidth: solo ? 127 : 0 }));
 
-    // Pick the first preset from the new mode's preset list (top to bottom)
     const list = getActivePresetList(solo);
-    if (list.length > 0) {
-      const preset = list[0];
-      setRockerIndex(0);
-      setPromptText(preset);
-      setActiveColor(getPromptColor(preset));
-      if (isAudioPrompt) post({ type: 'clearAudioPrompt' });
-      setIsAudioPrompt(false);
-      sendPrompt(preset, true, solo);
-    }
-    setIsPromptEdited(false);
+    const presetIdx = list.findIndex(p => p.toLowerCase() === promptText.toLowerCase());
+    setRockerIndex(presetIdx);
+    setIsPromptEdited(presetIdx === -1);
+
+    sendPrompt(promptText, true, solo);
   };
 
   // MIDI sources list state
