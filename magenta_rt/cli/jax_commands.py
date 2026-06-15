@@ -27,20 +27,25 @@ def jax():
 
 @jax.command()
 @click.option("--prompt", default="disco funk", help="Text conditioning for MusicCoCa.")
+@click.option("--audio", default=None, type=click.Path(exists=True), help="Path to an audio file for style conditioning. Can be combined with --prompt.")
+@click.option("--blend-ratio", default=0.5, type=float, help="When both --audio and --prompt are given, weight for audio (0.0=text only, 1.0=audio only).")
 @click.option("--model", default=paths.DEFAULT_MODEL_NAME, type=str, help="Model variant name (e.g. 'mrt2_base', 'mrt2_small').")
 @click.option("--duration", default=4.0, type=float, help="Duration in seconds.")
 @click.option("--temperature", default=1.3, type=float)
 @click.option("--top-k", default=40, type=int)
 @click.option("--cfg-musiccoca", default=3.0, type=float)
 @click.option("--cfg-notes", default=1.0, type=float)
+@click.option("--output", default=None, type=click.Path(), help="Output file path.")
 @click.option("--checkpoint", default=None, type=str, help="Checkpoint filename in checkpoints/ directory.")
-def generate(prompt, model, duration, temperature, top_k,
-             cfg_musiccoca, cfg_notes, checkpoint):
+def generate(prompt, audio, blend_ratio, model, duration, temperature, top_k,
+             cfg_musiccoca, cfg_notes, output, checkpoint):
     """Generate audio with the JAX backend."""
     from magenta_rt.jax.generate import main as run
 
     kwargs = dict(
         prompt=prompt,
+        audio_path=audio,
+        blend_ratio=blend_ratio,
         model_name=model,
         checkpoint=checkpoint,
         temperature=temperature,
@@ -48,5 +53,6 @@ def generate(prompt, model, duration, temperature, top_k,
         cfg_musiccoca=cfg_musiccoca,
         cfg_notes=cfg_notes,
         duration=duration,
+        output=output,
     )
     run(**kwargs)
