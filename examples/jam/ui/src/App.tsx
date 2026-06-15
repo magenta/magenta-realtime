@@ -38,7 +38,6 @@ import {
   Refresh,
   PlayArrow,
   Pause,
-  Save,
 } from '@mui/icons-material';
 
 // ─── WebKit bridge ───────────────────────────────────────────────────────────
@@ -139,20 +138,6 @@ function App() {
   const [isSoloMode, setIsSoloMode] = useState(false);
   const lastSentSoloMode = useRef(false);
 
-  // ─── User preset overrides ───────────────────────────────────────────────
-  // Sparse overlay: only indices the user has explicitly saved get entries.
-  // `null` means "use factory default" (reserved for future reset support).
-  const [userPresetsSolo, setUserPresetsSolo] = useState<Record<number, string>>({});
-  const [userPresetsJam, setUserPresetsJam] = useState<Record<number, string>>({});
-
-  const getFactoryList = useCallback((solo: boolean): string[] => {
-    return solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
-  }, []);
-
-  const getUserOverrides = useCallback((solo: boolean): Record<number, string> => {
-    return solo ? userPresetsSolo : userPresetsJam;
-  }, [userPresetsSolo, userPresetsJam]);
-
   // ─── Prompt Rocker state ─────────────────────────────────────────────────
   const [rockerIndex, setRockerIndex] = useState(0);
   const rockerInitialized = useRef(false);
@@ -166,12 +151,10 @@ function App() {
     }
   }, [rockerIndex]);
 
-  /** Returns the effective preset list: factory with user overrides applied. */
+  /** Returns the preset list. */
   const getActivePresetList = useCallback((solo: boolean) => {
-    const factory = getFactoryList(solo);
-    const overrides = getUserOverrides(solo);
-    return factory.map((text, i) => (i in overrides ? overrides[i] : text));
-  }, [getFactoryList, getUserOverrides]);
+    return solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
+  }, []);
 
   const applyPresetAtIndex = useCallback((list: string[], index: number) => {
     const preset = list[index];
@@ -204,28 +187,6 @@ function App() {
   const handleRockerRight = useCallback(() => navigatePreset(1), [navigatePreset]);
 
 
-  /** Persist the full user-overrides map to native side. */
-  const persistUserPresets = useCallback((solo: Record<number, string>, jam: Record<number, string>) => {
-    post({ type: 'saveUserPresets', solo, jam });
-  }, []);
-
-  /** Save the current prompt text as a user override for the active preset slot. */
-  const handleSavePreset = useCallback(() => {
-    const text = promptText.trim();
-    if (!text) return;
-    const setter = isSoloMode ? setUserPresetsSolo : setUserPresetsJam;
-    setter(prev => {
-      const next = { ...prev, [rockerIndex]: text };
-      // Persist both maps — grab the latest of the "other" map from current state
-      if (isSoloMode) {
-        persistUserPresets(next, userPresetsJam);
-      } else {
-        persistUserPresets(userPresetsSolo, next);
-      }
-      setIsPromptEdited(false);
-      return next;
-    });
-  }, [promptText, isSoloMode, rockerIndex, userPresetsSolo, userPresetsJam, persistUserPresets]);
 
   const handleModeChange = (solo: boolean) => {
     setIsSoloMode(solo);
@@ -433,12 +394,6 @@ function App() {
       }
 
 
-      // Restore user preset overrides from native if present
-      if (state.savedUserPresets !== undefined) {
-        if (state.savedUserPresets.solo) setUserPresetsSolo(state.savedUserPresets.solo);
-        if (state.savedUserPresets.jam) setUserPresetsJam(state.savedUserPresets.jam);
-      }
-
       if (state.prompt !== undefined && !promptInitialized.current) {
         // Use saved rocker index if available, otherwise try to find a match
         let presetIdx = -1;
@@ -446,14 +401,7 @@ function App() {
           presetIdx = state.savedRockerIndex;
         }
 
-        // Build effective preset list using user overrides that arrived in this same state update
-        const userSolo = state.savedUserPresets?.solo ?? {};
-        const userJam = state.savedUserPresets?.jam ?? {};
-        const factoryList = solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
-        const effectiveList = factoryList.map((text, i) => {
-          const overrides = solo ? userSolo : userJam;
-          return (i in overrides) ? overrides[i] : text;
-        });
+        const effectiveList = solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
 
         let promptToUse = state.prompt;
 
@@ -673,9 +621,6 @@ function App() {
   // Current preset list for the rocker display
   const currentPresetList = getActivePresetList(isSoloMode);
 
-  // Determine if the user has modified the prompt relative to the saved preset
-  const savedPresetText = currentPresetList[rockerIndex] ?? '';
-  const promptIsDirty = isPromptEdited && promptText.trim() !== '' && promptText !== savedPresetText;
 
   // Tab style helper for the Solo/Jam switcher
   const modeTabStyle = (active: boolean): React.CSSProperties => ({
@@ -983,23 +928,7 @@ function App() {
                   alignItems: 'center',
                   gap: '4px',
                 }}>
-                {/* Save preset button — visible only when text prompt is modified (dirty) */}
-                {!isAudioPrompt && promptIsDirty && (
-                  <Tooltip title="Save preset" placement="top">
-                    <span>
-                      <IconButton
-                        variant="jam"
-                        onClick={handleSavePreset}
-                        sx={{
-                          width: 36,
-                          height: 36,
-                        }}
-                      >
-                        <Save sx={{ fontSize: 18, color: activeColor }} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
+
                 {isAudioPrompt ? (
                   <IconButton
                     variant="jam"
