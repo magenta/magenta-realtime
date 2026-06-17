@@ -166,7 +166,7 @@ using magentart::core::RealtimeRunner;
             else if (i == 4) value = cfgNotes;
             else if (i == 5) value = kMagentaDefaultVolume;
             else if (i == 7) value = kMagentaDefaultUnmaskWidth;
-            else if (i == 8) value = kMagentaDefaultBufferSize;
+            else if (i == 8) value = [prefixString isEqualToString:@"Collider"] ? kColliderDefaultBufferSize : kMagentaDefaultBufferSize;
             else if (i == 48) value = kMagentaDefaultCfgDrums;
 
             [self applyParamToEngine:engine address:i value:value prefixString:prefixString];
@@ -185,7 +185,8 @@ using magentart::core::RealtimeRunner;
     [self applyParamToEngine:engine address:5  value:kMagentaDefaultVolume      prefixString:prefixString];
     [self applyParamToEngine:engine address:6  value:0.0f                       prefixString:prefixString]; // mute off
     [self applyParamToEngine:engine address:7  value:kMagentaDefaultUnmaskWidth prefixString:prefixString];
-    [self applyParamToEngine:engine address:8  value:kMagentaDefaultBufferSize  prefixString:prefixString];
+    float bufferSize = [prefixString isEqualToString:@"Collider"] ? kColliderDefaultBufferSize : kMagentaDefaultBufferSize;
+    [self applyParamToEngine:engine address:8  value:bufferSize                 prefixString:prefixString];
     [self applyParamToEngine:engine address:39 value:0.0f                       prefixString:prefixString]; // drumless off
     [self applyParamToEngine:engine address:48 value:kMagentaDefaultCfgDrums    prefixString:prefixString];
 }

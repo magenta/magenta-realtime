@@ -326,15 +326,6 @@ static BOOL isDevServerRunning(void) {
 
     state[@"computerKeyboardMidi"] = @([[NSUserDefaults standardUserDefaults] boolForKey:@"Jam_ComputerKeyboardMidi"]);
 
-    // Restore user preset overrides
-    NSDictionary* savedSolo = [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"Jam_UserPresetsSolo"];
-    NSDictionary* savedJam = [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"Jam_UserPresetsJam"];
-    if (savedSolo || savedJam) {
-        NSMutableDictionary* presets = [NSMutableDictionary dictionary];
-        if (savedSolo) presets[@"solo"] = savedSolo;
-        if (savedJam) presets[@"jam"] = savedJam;
-        state[@"savedUserPresets"] = presets;
-    }
 
     NSString* searchPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"MagentaRT_ModelFolderPath"];
     if (!searchPath) {
@@ -595,16 +586,6 @@ static BOOL isDevServerRunning(void) {
         NSNumber* index = body[@"index"];
         if (history) [[NSUserDefaults standardUserDefaults] setObject:history forKey:@"Jam_PromptHistory"];
         if (index) [[NSUserDefaults standardUserDefaults] setObject:index forKey:@"Jam_HistoryIndex"];
-    }
-    else if ([type isEqualToString:@"saveUserPresets"]) {
-        NSDictionary* solo = body[@"solo"];
-        NSDictionary* jam = body[@"jam"];
-        if ([solo isKindOfClass:[NSDictionary class]]) {
-            [[NSUserDefaults standardUserDefaults] setObject:solo forKey:@"Jam_UserPresetsSolo"];
-        }
-        if ([jam isKindOfClass:[NSDictionary class]]) {
-            [[NSUserDefaults standardUserDefaults] setObject:jam forKey:@"Jam_UserPresetsJam"];
-        }
     }
     else if ([type isEqualToString:@"saveRockerIndex"]) {
         NSNumber* value = body[@"value"];
