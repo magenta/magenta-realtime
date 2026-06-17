@@ -28,5 +28,6 @@ export {
   DEFAULT_VOLUME,
   COLLIDER_CFG_NOTES,
   COLLIDER_CFG_MUSICCOCA,
+  COLLIDER_DEFAULT_BUFFER_SIZE,
   getModelSuffix,
 } from './defaultParams';

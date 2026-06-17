@@ -31,6 +31,7 @@ static const float kMagentaDefaultBufferSize     = 0.0f;
 // Per-app overrides
 static const float kColliderDefaultCfgNotes      = 0.0f;
 static const float kColliderDefaultCfgMusicCoCa  = 5.0f;
+static const float kColliderDefaultBufferSize     = 2.0f;
 
 @interface MagentaSettings : NSObject
 
