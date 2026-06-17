@@ -413,8 +413,20 @@ def load_spectrostream_weights(
       for k in unupdated_dec:
         print(f"  NOT UPDATED: {'.'.join(k)}")
 
-  # SpectroStream encoder (conv layers)
-  encoder_path = os.path.join(os.path.dirname(checkpoint_path), 'encoder.safetensors')
+  # SpectroStream encoder (conv layers). Prefer a sibling of the checkpoint (the
+  # historical co-located layout); otherwise fall back to the resolved
+  # SpectroStream resource dir (MAGENTA_HOME or the HF cache). The import is lazy
+  # and guarded so this module stays self-contained / standalone-importable.
+  encoder_path = os.path.join(os.path.dirname(str(checkpoint_path)), 'encoder.safetensors')
+  if not os.path.exists(encoder_path):
+    try:
+      from magenta_rt import paths  # noqa: E402
+
+      resolved = paths.resolve_spectrostream_dir() / 'encoder.safetensors'
+      if resolved.exists():
+        encoder_path = str(resolved)
+    except Exception:
+      pass
   if os.path.exists(encoder_path):
     print('  Loading SpectroStream encoder...')
     # Materialize all deferred conv layers by running a dummy step for encoder.

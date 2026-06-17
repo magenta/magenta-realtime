@@ -73,6 +73,11 @@ mrt models download
 mrt mlx generate --prompt "disco funk" --duration 4.0 --model=mrt2_base
 ```
 
+> Already have the weights from `hf download google/magenta-realtime-2`? They're reused
+> automatically from the HuggingFace cache — you can skip the download commands. To make
+> the `mrt` CLI populate that shared cache instead of `~/Documents/Magenta/`, add
+> `--use-hf-cache`. See [docs/models.md](docs/models.md#reusing-the-huggingface-cache).
+
 ### Python Development
 
 For local development, clone the repo instead of installing from PyPI:
