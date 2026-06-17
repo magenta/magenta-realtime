@@ -56,6 +56,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+if [ "$MODE" = "0" ]; then
+  "$SCRIPT_DIR/clear-defaults.sh"
+fi
+
 echo ""
 echo "Starting Vite dev servers..."
 echo ""
