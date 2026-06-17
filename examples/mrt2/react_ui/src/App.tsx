@@ -1333,6 +1333,7 @@ export default function App() {
                 onSelectSource={(endpoint) => postMessage({ type: 'selectMidiSource', endpoint })}
                 showComputerKeyboard={true}
                 midiActive={activeNotes.length > 0}
+                maxDropdownWidth="280px"
               />
             )}
             {/* Octave rocker — QWERTY mode only, absolutely centered */}
