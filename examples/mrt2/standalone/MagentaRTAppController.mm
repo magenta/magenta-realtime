@@ -291,7 +291,7 @@ static BOOL shouldPersistParam(int address) {
 - (void)loadView {
     NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1075, 470)];
     view.wantsLayer = YES;
-    view.layer.backgroundColor = [NSColor colorWithRed:0.15 green:0.15 blue:0.2 alpha:1.0].CGColor;
+    view.layer.backgroundColor = [NSColor colorWithRed:0.102 green:0.102 blue:0.114 alpha:1.0].CGColor;
     self.view = view;
 }
 

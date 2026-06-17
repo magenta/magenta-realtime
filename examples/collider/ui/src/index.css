@@ -47,6 +47,7 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  background-color: #202124;
 }
 * {
   user-select: none;
