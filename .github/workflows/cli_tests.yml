@@ -61,11 +61,15 @@ jobs:
         uv run cmake --build benchmark_build --target benchmark_mlxfn -j$(sysctl -n hw.ncpu)
         ./benchmark_build/benchmark_mlxfn outputs/exported_models/cpp_benchmark_mrt2_base 2
 
+    - name: Download small checkpoint for tests
+      run: |
+        source .venv/bin/activate
+        mrt models init --source gcs
+        mrt checkpoints download mrt2_small --source gcs
+
     - name: Run tests with coverage
       run: |
         source .venv/bin/activate
-        # TODO: Enable tests requiring checkpoints in CI (e.g., by downloading small checkpoints or mocking).
-        # Currently, test_bitlevel_parity.py and test_prefill_correctness.py will be skipped.
         pytest tests/ --cov=magenta_rt --cov-report=xml --cov-report=term
 
     - name: Upload coverage report
