@@ -109,6 +109,7 @@ function App() {
   const [resourcesMissing, setResourcesMissing] = useState(false);
   const [resourcesProgress, setResourcesProgress] = useState<any>(null);
   const [isFetchingModels, setIsFetchingModels] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
 
   // Settings Drawer states
@@ -488,6 +489,7 @@ function App() {
       if (state.solomode !== undefined) {
         setIsSoloMode(!!state.solomode);
       }
+      setIsInitialized(true);
     };
 
     post({ type: 'uiReady' });
@@ -703,8 +705,22 @@ function App() {
         boxSizing: 'border-box',
         color: '#FFF',
         fontFamily: "'Google Sans Text', system-ui, sans-serif",
+        backgroundColor: '#000',
       }}
     >
+      {/* Fade overlay to transition from blank white page on first load */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#000',
+        zIndex: 99999,
+        opacity: isInitialized ? 0 : 1,
+        pointerEvents: isInitialized ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease-in-out',
+      }} />
       {/* ══════════════════════════════════════════════════════════════════
           UPPER SECTION — colored background, contains rows 1 & 2, octave rocker
           ══════════════════════════════════════════════════════════════════ */}

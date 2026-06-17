@@ -127,7 +127,7 @@ static BOOL isDevServerRunning(void) {
 - (void)loadView {
     NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 850, 605)];
     view.wantsLayer = YES;
-    view.layer.backgroundColor = [NSColor colorWithRed:0.96 green:0.94 blue:0.94 alpha:1.0].CGColor;
+    view.layer.backgroundColor = [NSColor blackColor].CGColor;
     self.view = view;
 }
 

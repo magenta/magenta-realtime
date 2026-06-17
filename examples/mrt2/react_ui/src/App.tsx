@@ -154,6 +154,7 @@ export default function App() {
   const [resourcesMissing, setResourcesMissing] = useState(false);
   const [resourcesProgress, setResourcesProgress] = useState<any>(null);
   const [isFetchingModels, setIsFetchingModels] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
 
   const [bankStatus, setBankStatus] = useState([false, false, false]);
@@ -506,6 +507,7 @@ export default function App() {
         }
       }
       initialLoadDone.current = true;
+      setIsInitialized(true);
     };
 
     // Handle Cmd+A in text inputs (WebView doesn't handle this natively)
@@ -636,7 +638,21 @@ export default function App() {
       color: 'var(--color-fg)',
       overflow: 'hidden',
       position: 'relative',
+      backgroundColor: 'var(--color-bg)',
     }}>
+      {/* Fade overlay to transition from blank white page on first load */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#1a1a1d',
+        zIndex: 99999,
+        opacity: isInitialized ? 0 : 1,
+        pointerEvents: isInitialized ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease-in-out',
+      }} />
       {/* Tiny ghost bug button in absolute top-right corner of the window */}
       <Tooltip title={`Build: ${__COMMIT_HASH__}`} placement="bottom-end" arrow={false}>
         <div style={{
