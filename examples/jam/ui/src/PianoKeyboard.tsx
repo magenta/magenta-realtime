@@ -64,7 +64,6 @@ export function PianoKeyboard({
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const note = getNoteFromPoint(e.clientX, e.clientY);
     if (note !== null) {
