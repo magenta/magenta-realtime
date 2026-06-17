@@ -65,6 +65,7 @@ export interface PromptNode {
   label: string;
   colorIndex: number;
   isAudio?: boolean;
+  loading?: boolean;
 }
 
 export interface ListenerNode {
@@ -113,7 +114,13 @@ function hitboxRadius(movingRef: Map<string, { vx: number; vy: number }>, key: s
 }
 
 /** Advance a single ball: decay boost, clamp speed, integrate position, bounce off walls. */
-function advanceBall(ball: BallState, key: string, rawDt: number, globalSpeed: number, w: number, h: number) {
+function advanceBall(
+  ball: BallState,
+  key: string,
+  rawDt: number,
+  globalSpeed: number,
+  bounds: { left: number; right: number; top: number; bottom: number }
+) {
   ball.boost += (globalSpeed - ball.boost) * Math.min(1, rawDt * config.boostSettleRate);
   const dt = rawDt * ball.boost;
 
@@ -128,10 +135,22 @@ function advanceBall(ball: BallState, key: string, rawDt: number, globalSpeed: n
   ball.y += ball.vy * dt;
 
   const r = key === 'listener' ? config.listenerRadius : config.promptRadius;
-  if (ball.x < r)     { ball.x = 2 * r - ball.x;     ball.vx = Math.abs(ball.vx); }
-  if (ball.x > w - r) { ball.x = 2 * (w - r) - ball.x; ball.vx = -Math.abs(ball.vx); }
-  if (ball.y < r)     { ball.y = 2 * r - ball.y;     ball.vy = Math.abs(ball.vy); }
-  if (ball.y > h - r) { ball.y = 2 * (h - r) - ball.y; ball.vy = -Math.abs(ball.vy); }
+  if (ball.x < bounds.left + r) {
+    ball.x = 2 * (bounds.left + r) - ball.x;
+    ball.vx = Math.abs(ball.vx);
+  }
+  if (ball.x > bounds.right - r) {
+    ball.x = 2 * (bounds.right - r) - ball.x;
+    ball.vx = -Math.abs(ball.vx);
+  }
+  if (ball.y < bounds.top + r) {
+    ball.y = 2 * (bounds.top + r) - ball.y;
+    ball.vy = Math.abs(ball.vy);
+  }
+  if (ball.y > bounds.bottom - r) {
+    ball.y = 2 * (bounds.bottom - r) - ball.y;
+    ball.vy = -Math.abs(ball.vy);
+  }
 }
 
 /** Resolve elastic collisions between all balls. Activates stationary balls that get hit. */
@@ -228,6 +247,7 @@ function resolveCollisions(
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function PromptSurface({
+  collisionBoundaryRef,
   prompts,
   listener,
   selectedBallId,
@@ -246,6 +266,7 @@ export function PromptSurface({
   active = true,
   collisions = false,
 }: {
+  collisionBoundaryRef?: React.RefObject<HTMLDivElement | null>;
   prompts: PromptNode[];
   listener: ListenerNode;
   selectedBallId: number | null;
@@ -293,12 +314,15 @@ export function PromptSurface({
   const trashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isDraggingPrompt, setIsDraggingPrompt] = useState(false);
   const [isOverTrash, setIsOverTrash] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
   // Sorted ball keys (farthest-first) — only recomputed on mouse move
   const [sortOrder, setSortOrder] = useState<string[]>([]);
 
   const dragSamplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
   const rafRef = useRef<number>(0);
   const dashOffsetsRef = useRef<Map<string, number>>(new Map());
+  const boundsRef = useRef({ left: 0, right: 800, top: 0, bottom: 600 });
 
 
   // ─── Refs mirroring props (for ResizeObserver callback) ─────────────
@@ -372,7 +396,27 @@ export function PromptSurface({
       const w = Math.round(width);
       const h = Math.round(height);
       if (w <= 0 || h <= 0) return;  // Skip when hidden (display:none)
-      if (w !== stageSizeRef.current.w || h !== stageSizeRef.current.h) {
+
+      let left = 0;
+      let right = w;
+      let top = 0;
+      let bottom = h;
+      if (collisionBoundaryRef?.current) {
+        const rect = collisionBoundaryRef.current.getBoundingClientRect();
+        left = rect.left;
+        right = rect.right;
+        top = rect.top;
+        bottom = rect.bottom;
+      }
+
+      const sizeChanged = w !== stageSizeRef.current.w || h !== stageSizeRef.current.h;
+      const boundsChanged = left !== boundsRef.current.left ||
+                            right !== boundsRef.current.right ||
+                            top !== boundsRef.current.top ||
+                            bottom !== boundsRef.current.bottom;
+
+      if (sizeChanged || boundsChanged) {
+        boundsRef.current = { left, right, top, bottom };
         stageSizeRef.current = { w, h };
 
         // flushSync forces React to commit the viewBox resize AND
@@ -382,29 +426,31 @@ export function PromptSurface({
           setStageW(w);
           setStageH(h);
 
+          const bounds = boundsRef.current;
           const lRef = listenerRef.current;
-          const lx = Math.max(config.listenerRadius, Math.min(w - config.listenerRadius, lRef.x));
-          const ly = Math.max(config.listenerRadius, Math.min(h - config.listenerRadius, lRef.y));
+          const lx = Math.max(bounds.left + config.listenerRadius, Math.min(bounds.right - config.listenerRadius, lRef.x));
+          const ly = Math.max(bounds.top + config.listenerRadius, Math.min(bounds.bottom - config.listenerRadius, lRef.y));
           if (lx !== lRef.x || ly !== lRef.y) onListenerMove(lx, ly);
 
           promptsRef.current.forEach(p => {
-            const px = Math.max(config.promptRadius, Math.min(w - config.promptRadius, p.x));
-            const py = Math.max(config.promptRadius, Math.min(h - config.promptRadius, p.y));
+            const px = Math.max(bounds.left + config.promptRadius, Math.min(bounds.right - config.promptRadius, p.x));
+            const py = Math.max(bounds.top + config.promptRadius, Math.min(bounds.bottom - config.promptRadius, p.y));
             if (px !== p.x || py !== p.y) onPromptMove(p.id, px, py);
           });
         });
 
         // Clamp physics state (mutable refs, no render needed)
+        const bounds = boundsRef.current;
         const movingListener = movingRef.current.get('listener');
         if (movingListener) {
-          movingListener.x = Math.max(config.listenerRadius, Math.min(w - config.listenerRadius, movingListener.x));
-          movingListener.y = Math.max(config.listenerRadius, Math.min(h - config.listenerRadius, movingListener.y));
+          movingListener.x = Math.max(bounds.left + config.listenerRadius, Math.min(bounds.right - config.listenerRadius, movingListener.x));
+          movingListener.y = Math.max(bounds.top + config.listenerRadius, Math.min(bounds.bottom - config.listenerRadius, movingListener.y));
         }
         movingRef.current.forEach((ball, key) => {
           if (key === 'listener') return;
           const r = config.promptRadius;
-          ball.x = Math.max(r, Math.min(w - r, ball.x));
-          ball.y = Math.max(r, Math.min(h - r, ball.y));
+          ball.x = Math.max(bounds.left + r, Math.min(bounds.right - r, ball.x));
+          ball.y = Math.max(bounds.top + r, Math.min(bounds.bottom - r, ball.y));
         });
       }
     };
@@ -413,7 +459,7 @@ export function PromptSurface({
     const ro = new ResizeObserver(measure);
     ro.observe(svg);
     return () => ro.disconnect();
-  }, [onPromptMove, onListenerMove]);
+  }, [onPromptMove, onListenerMove, collisionBoundaryRef]);
 
   useEffect(() => {
     if (!active) return;  // Don't run rAF loop when inactive
@@ -424,12 +470,11 @@ export function PromptSurface({
       const rawDt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
-      const { w, h } = stageSizeRef.current;
       const globalSpeed = physicsSpeedRef.current;
 
       // Advance each moving ball (only when physics is enabled)
       if (physicsEnabled) {
-        movingRef.current.forEach((ball, key) => advanceBall(ball, key, rawDt, globalSpeed, w, h));
+        movingRef.current.forEach((ball, key) => advanceBall(ball, key, rawDt, globalSpeed, boundsRef.current));
 
       // Resolve ball-to-ball collisions
         if (config.collisions) {
@@ -474,7 +519,7 @@ export function PromptSurface({
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [onPromptMove, onListenerMove, physicsEnabled, active]);
+  }, [onPromptMove, onListenerMove, physicsEnabled, active, collisionBoundaryRef]);
 
   // Keep a ref to selectedBallId for the keydown handler
   const selectedBallIdRef = useRef(selectedBallId);
@@ -532,10 +577,10 @@ export function PromptSurface({
     }
 
     const pos = clientToStage(e.clientX, e.clientY);
-    const { w, h } = stageSizeRef.current;
+    const bounds = boundsRef.current;
     const r = drag.type === 'listener' ? config.listenerRadius : config.promptRadius;
-    const x = Math.max(r, Math.min(w - r, pos.x - drag.offsetX));
-    const y = Math.max(r, Math.min(h - r, pos.y - drag.offsetY));
+    const x = Math.max(bounds.left + r, Math.min(bounds.right - r, pos.x - drag.offsetX));
+    const y = Math.max(bounds.top + r, Math.min(bounds.bottom - r, pos.y - drag.offsetY));
 
     // Record velocity samples for throw
     dragSamplesRef.current.push({ x, y, t: performance.now() });
@@ -668,7 +713,11 @@ export function PromptSurface({
     if (target !== svgRef.current && target.getAttribute('data-bg') !== 'true') return;
 
     const pos = clientToStage(e.clientX, e.clientY);
-    onPromptAdd(pos.x, pos.y);
+    const bounds = boundsRef.current;
+    const pad = config.promptRadius + 10;
+    const x = Math.max(bounds.left + pad, Math.min(bounds.right - pad, pos.x));
+    const y = Math.max(bounds.top + pad, Math.min(bounds.bottom - pad, pos.y));
+    onPromptAdd(x, y);
   }, [clientToStage, onPromptAdd]);
 
   // ─── Render ──────────────────────────────────────────────────────────
@@ -738,7 +787,11 @@ export function PromptSurface({
         {/* Background rect for event capture */}
         <rect data-bg="true" x="0" y="0" width={stageW} height={stageH} fill="transparent" />
         {/* Debug: physics boundary (shown via .debug CSS) */}
-        <rect className="debug-bounds" x="0" y="0" width={stageW} height={stageH}
+        <rect className="debug-bounds"
+          x={boundsRef.current.left}
+          y={boundsRef.current.top}
+          width={boundsRef.current.right - boundsRef.current.left}
+          height={boundsRef.current.bottom - boundsRef.current.top}
           fill="none" stroke="cyan" strokeWidth={2} vectorEffect="non-scaling-stroke" />
 
 
@@ -848,6 +901,19 @@ export function PromptSurface({
                 strokeWidth={1}
                 pointerEvents="none"
               />
+              {p.loading && (
+                <circle
+                  className="prompt-loading-ring"
+                  cx={p.x}
+                  cy={p.y}
+                  r={config.promptRadius + 4}
+                  fill="none"
+                  stroke={activeColor}
+                  strokeWidth={2}
+                  strokeDasharray={`${(config.promptRadius + 4) * Math.PI * 0.4} ${(config.promptRadius + 4) * Math.PI * 1.6}`}
+                  pointerEvents="none"
+                />
+              )}
               <circle
                 className="draggable"
                 cx={p.x}
@@ -895,7 +961,7 @@ export function PromptSurface({
                 transform: 'translate(-50%, -100%)',
               }}
             >
-              <input
+              <textarea
                 ref={!p.isAudio && isJustCreated ? (el) => {
                   if (el) {
                     el.focus();
@@ -905,15 +971,19 @@ export function PromptSurface({
                 } : undefined}
                 readOnly={p.isAudio}
                 style={{
-                  padding: '2px 12px',
-                  borderRadius: '9999px',
+                  padding: '4px 12px',
+                  borderRadius: '15px',
                   fontSize: '13px',
                   fontWeight: 500,
+                  width: 'max-content',
+                  maxWidth: '180px',
+                  maxHeight: '100px',
+                  resize: 'none',
                   textAlign: 'center',
                   outline: 'none',
+                  textWrap: 'pretty',
                   margin: 0,
                   border: 'none',
-                  whiteSpace: 'nowrap',
                   pointerEvents: p.isAudio ? 'none': 'auto',
                   cursor: p.isAudio ? 'default' : 'text',
                   color: 'white',
@@ -921,25 +991,32 @@ export function PromptSurface({
                   fontFamily: "'Google Sans Text', system-ui, sans-serif",
                   fieldSizing: 'content',
                 } as React.CSSProperties}
-                value={p.isAudio ? `♪ ${p.label}` : p.label}
+                value={p.id === editingId ? (p.isAudio ? `♪ ${editingText}` : editingText) : (p.isAudio ? `♪ ${p.label}` : p.label)}
                 spellCheck={false}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"
+                maxLength={1000}
                 onFocus={() => {
                   if (p.isAudio) return;
                   preEditRef.current = p.label;
+                  setEditingId(p.id);
+                  setEditingText(p.label);
                   onBallSelect(null);
                 }}
                 onBlur={() => {
                   if (p.isAudio) return;
-                  if (!p.label.trim()) {
+                  const trimmed = editingText.trim();
+                  if (!trimmed) {
                     onPromptTextChange(p.id, preEditRef.current);
+                  } else if (trimmed !== preEditRef.current) {
+                    onPromptTextChange(p.id, trimmed);
                   }
+                  setEditingId(null);
                 }}
                 onChange={(e) => {
                   if (p.isAudio) return;
-                  onPromptTextChange(p.id, e.target.value);
+                  setEditingText(e.target.value);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
