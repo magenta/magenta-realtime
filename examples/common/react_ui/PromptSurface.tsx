@@ -265,6 +265,10 @@ export function PromptSurface({
   physicsEnabled = true,
   active = true,
   collisions = false,
+  promptRadius = 20,
+  listenerRadius = 25,
+  labelFontSize = 13,
+  labelMaxWidth = '180px',
 }: {
   collisionBoundaryRef?: React.RefObject<HTMLDivElement | null>;
   prompts: PromptNode[];
@@ -284,8 +288,20 @@ export function PromptSurface({
   physicsEnabled?: boolean;
   active?: boolean;
   collisions?: boolean;
+  /** Override the default prompt orb radius (default: 20). */
+  promptRadius?: number;
+  /** Override the default listener orb radius (default: 25). */
+  listenerRadius?: number;
+  /** Override the default prompt label font size in px (default: 13). */
+  labelFontSize?: number;
+  /** Override the prompt label's CSS max-width (default: '180px'). */
+  labelMaxWidth?: string | number;
 }) {
   config.collisions = collisions;
+  config.promptRadius = promptRadius;
+  config.listenerRadius = listenerRadius;
+  config.volRingMin = promptRadius;
+  config.volRingMax = Math.round(120 * (promptRadius / 20));
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragInfo | null>(null);
   const justCreatedIdRef = useRef<number | null>(null);
@@ -973,10 +989,10 @@ export function PromptSurface({
                 style={{
                   padding: '4px 12px',
                   borderRadius: '15px',
-                  fontSize: '13px',
+                  fontSize: `${labelFontSize}px`,
                   fontWeight: 500,
                   width: 'max-content',
-                  maxWidth: '180px',
+                  maxWidth: labelMaxWidth,
                   maxHeight: '100px',
                   resize: 'none',
                   textAlign: 'center',
