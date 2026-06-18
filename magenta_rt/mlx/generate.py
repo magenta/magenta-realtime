@@ -29,6 +29,8 @@ def main(
     quantize_group_size: int | None = None,
     # control
     prompt: str = "disco funk",
+    audio_path: str | None = None,
+    blend_ratio: float = 0.5,
     temperature: float = 1.3,
     top_k: int = 40,
     cfg_musiccoca: float = 3.0,
@@ -36,6 +38,7 @@ def main(
     # utils
     checkpoint: str | None = None,
     duration: float = 4.0,
+    output: str | None = None,
     use_mlxfn: bool = True,
 ):
     if use_mlxfn:
@@ -60,7 +63,18 @@ def main(
             quantize_group_size=quantize_group_size,
         )
 
-    embedding = mrt.embed_style(prompt, use_mapper=True)
+    # --- Compute style embedding ---
+    import numpy as np
+    from magenta_rt.audio import Waveform
+
+    if audio_path and prompt:
+        audio_emb = mrt.embed_style(Waveform.from_file(audio_path))
+        text_emb = mrt.embed_style(prompt, use_mapper=True)
+        embedding = audio_emb * blend_ratio + text_emb * (1.0 - blend_ratio)
+    elif audio_path:
+        embedding = mrt.embed_style(Waveform.from_file(audio_path))
+    else:
+        embedding = mrt.embed_style(prompt, use_mapper=True)
 
     frames = int(duration * 25)
 
@@ -74,7 +88,7 @@ def main(
     print(f"Target: 25 steps/s, 40 ms/step for real-time")
 
     # --- Save output ---
-    out_path = paths.outputs_dir() / f"output_audio_mlx_{model_name}.wav"
+    out_path = output or str(paths.outputs_dir() / f"output_audio_mlx_{model_name}.wav")
     wav.write(str(out_path))
     print(f"Saved to {out_path} ({duration}s of audio)")
 
@@ -89,11 +103,16 @@ if __name__ == "__main__":
     parser.add_argument("--quantize-group-size", default=None, type=int,
         help="Only matters if `--bits` is set.")
     parser.add_argument("--prompt", default=None, type=str, help="Text conditioning for MusicCoCa.")
+    parser.add_argument("--audio", default=None, type=str,
+        help="Path to an audio file for style conditioning. Can be combined with --prompt.")
+    parser.add_argument("--blend-ratio", default=0.5, type=float,
+        help="When both --audio and --prompt are given, weight for audio (0.0=text only, 1.0=audio only).")
     parser.add_argument("--temperature", default=1.3, type=float)
     parser.add_argument("--top-k", default=40, type=int)
     parser.add_argument("--cfg-musiccoca", default=3.0, type=float)
     parser.add_argument("--cfg-notes", default=1.0, type=float)
     parser.add_argument("--duration", default=4.0, type=float, help="Duration in seconds.")
+    parser.add_argument("--output", default=None, type=str, help="Output file path.")
     parser.add_argument(
         '--checkpoint',
         default=None,
@@ -113,11 +132,14 @@ if __name__ == "__main__":
         bits=args.bits,
         quantize_group_size=args.quantize_group_size,
         prompt=args.prompt,
+        audio_path=args.audio,
+        blend_ratio=args.blend_ratio,
         temperature=args.temperature,
         top_k=args.top_k,
         cfg_musiccoca=args.cfg_musiccoca,
         cfg_notes=args.cfg_notes,
         checkpoint=args.checkpoint,
         duration=args.duration,
+        output=args.output,
         use_mlxfn=args.mlxfn,
     )
