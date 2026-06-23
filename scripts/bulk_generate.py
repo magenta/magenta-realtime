@@ -28,7 +28,6 @@ import logging
 
 import pandas as pd
 from pathlib import Path
-from scipy.io import wavfile
 
 from magenta_rt import MagentaRT2Mlxfn
 
@@ -78,12 +77,12 @@ def main():
         embedding = mrt.embed_style(prompt_text, use_mapper=True)
 
         start_time = time.time()
-        wav, _ = mrt.generate(style=embedding, frames=frames)
+        audio_tree, _ = mrt.generate(style=embedding, frames=frames)
         elapsed = time.time() - start_time
         print(f"  Done in {elapsed:.1f}s ({frames/elapsed:.1f} steps/s)")
 
         out_path = output_dir / f"{prompt_id}.wav"
-        wavfile.write(str(out_path), wav.sample_rate, wav.samples)
+        audio_tree.write(str(out_path))
         print(f"  Saved to {out_path}")
 
     print(f"\nAll done! Generated {len(prompts_df)} clips in {output_dir}")

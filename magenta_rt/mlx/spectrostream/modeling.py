@@ -904,7 +904,7 @@ class ResidualVectorQuantizer(nn.Module):
     """A [b, t, num_quantizers] sequence of codes."""
     if self.config.use_unique_codes:
       codes = codes.apply_values_masked(
-          lambda v: mx.mod(v, self.config.num_embeddings)  # was jnp.mod
+          lambda v: v % self.config.num_embeddings
       )
 
     num_input_quantizers = codes.shape[2]

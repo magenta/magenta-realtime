@@ -180,6 +180,8 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
   # the model's view of its own past output. This can be useful to encourage
   # Audio-to-Audio models to rely more on the encoder-side input signal.
   temporal_self_attention_dropout_prob: float | None = None
+  whole_source_dropout_rate: float = 0.0
+  temporal_input_dropout_prob: float = 0.0
 
   spectrostream: TokensConfig = SPECTROSTREAM
 
@@ -233,7 +235,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
     )
     # Fall back to the model class's own decoder_depth_size when not
     # explicitly overridden, matching JAX behaviour.
-    depth_overrides = dict(dropout_prob=0.0)
+    depth_overrides = dict(dropout_prob=self.dropout_prob)
     if depth_num_layers is not None:
         depth_overrides["num_layers"] = depth_num_layers
     if depth_model_dims is not None:
@@ -356,6 +358,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
         name='depthformer',
         conditioning_name='source',
         streaming_encoder=True,
+        whole_source_dropout_rate=self.whole_source_dropout_rate,
         encoder=depthformer.Encoder.Config(
             vocab_size=0,  # unused
             embedding_dimension=encoder_spec.model_dims,
@@ -368,6 +371,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
             num_codebooks=self.target_tokens_config.rvq_truncation_level,
             sos_id=0,
             soft_cap_logits=30.0,
+            temporal_input_dropout_prob=self.temporal_input_dropout_prob,
             # Shared embedding between time-wise and depth-wise model.
             embedder=sl.Serial.Config(
                 [
@@ -495,12 +499,54 @@ class MagentaRT2ModelSmall(MagentaRT2ModelBase):
   decoder_temporal_cross_attention_max_past_horizon: int = 41
 
 
+_TINY_SPEC = ModelSpec(
+    num_layers=1, model_dims=32, num_heads=4, dim_per_head=8,
+    hidden_dims=64, ffn_use_gated_activation=False,
+)
+
+
+class TinyTestPreset(MagentaRT2ModelBase):
+  """Tiny untrained model for fast smoke / parity tests.
+
+  Single-channel plain embedder (no pretrained MusicCoCa branch) and
+  1-layer 32-dim transformers. Structural twin of the ``tiny`` presets in
+  ``magenta_rt.nnx.configs`` and ``magenta_rt.mlx_pure.configs`` so random
+  weights bridge 1:1 across implementations for cross-framework parity.
+  """
+
+  encoder_size: ModelSpec = _TINY_SPEC
+  decoder_temporal_size: ModelSpec = _TINY_SPEC
+  decoder_depth_size: ModelSpec = _TINY_SPEC
+
+  use_pretrained_musiccoca_embedder: bool = False
+  encoder_max_past_horizon: int = 3
+  decoder_temporal_self_attention_max_past_horizon: int = 3
+  decoder_temporal_cross_attention_max_past_horizon: int = 3
+
+  @property
+  def target_tokens_config(self) -> TokensConfig:
+    return TokensConfig(
+        key='ss_target_tokens', codebook_size=8, rvq_levels=3,
+        rvq_truncation_level=3, num_extra_tokens=4, frame_rate=25.0,
+    )
+
+  @property
+  def input_configs(self) -> Sequence[TokensConfig]:
+    return (
+        TokensConfig(
+            key='tiny_input', codebook_size=24, rvq_levels=1,
+            rvq_truncation_level=1, num_extra_tokens=4, frame_rate=25.0,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Model registry – maps short CLI-friendly names to model classes.
 # ---------------------------------------------------------------------------
 MODEL_REGISTRY: dict[str, type[MagentaRT2ModelBase]] = {
     'mrt2_base': MagentaRT2ModelBase,
     'mrt2_small': MagentaRT2ModelSmall,
+    'tiny': TinyTestPreset,
 }
 
 

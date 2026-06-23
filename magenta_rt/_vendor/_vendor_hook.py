@@ -12,33 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Vendor hook: makes the bundled ``sequence_layers`` importable.
+"""Vendor hook: makes bundled third-party packages importable.
 
-When ``sequence_layers`` is **not** already installed as a proper package
-(e.g. via pip), this module adds the vendored submodule directory to
-``sys.path`` so that bare ``import sequence_layers`` statements work
-unchanged throughout the codebase.
+For each vendored package, when the package is **not** already installed as a
+proper package (e.g. via pip), this module adds its vendored directory to
+``sys.path`` so that the bare ``import`` statements used throughout the
+codebase work unchanged. If the package **is** already installed, the hook is
+a no-op for it, so a proper pip-installed version always wins.
 
-If ``sequence_layers`` **is** already installed (i.e. importable), this hook
-is a no-op, so a proper pip-installed version always wins.
+Vendored here:
+
+- ``sequence_layers`` (``sequence-layers/sequence_layers/``) — the
+  SequenceLayers library the jax/mlx backends are built on.
+- ``audiotree`` (``audiotree/audiotree/``) — a *minimal* copy of the
+  ``AudioTree`` pytree container (https://github.com/DBraun/audiotree). The
+  full package (``TreeWriter`` / ``sources`` / ``transforms``) is only needed
+  by ``magenta_rt.sft``; installing it from PyPI/git shadows this copy.
 """
 
-import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
+# (importable module name, directory under _vendor/ that contains that package)
+_VENDORED = (
+    ("sequence_layers", "sequence-layers"),
+    ("audiotree", "audiotree"),
+)
+
 
 def install() -> None:
-  """Add the vendored ``sequence-layers`` submodule to ``sys.path``."""
-  try:
-    importlib.import_module("sequence_layers")
-    # Already available — nothing to do.
-    return
-  except ImportError:
-    pass
-
-  # The submodule lives at magenta_rt/_vendor/sequence-layers/ and contains
-  # the sequence_layers/ Python package inside it.
-  vendor_submodule = str(Path(__file__).resolve().parent / "sequence-layers")
-  if Path(vendor_submodule).is_dir() and vendor_submodule not in sys.path:
-    sys.path.insert(0, vendor_submodule)
+  """Put each vendored package on ``sys.path`` unless it is already installed."""
+  vendor_root = Path(__file__).resolve().parent
+  for module_name, subdir in _VENDORED:
+    if importlib.util.find_spec(module_name) is not None:
+      # Already importable (pip-installed or already vendored) — leave it.
+      continue
+    vendor_dir = vendor_root / subdir
+    vendor_path = str(vendor_dir)
+    if vendor_dir.is_dir() and vendor_path not in sys.path:
+      sys.path.insert(0, vendor_path)

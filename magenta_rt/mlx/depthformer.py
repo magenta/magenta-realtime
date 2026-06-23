@@ -55,6 +55,12 @@ CLASSIFIER_FREE_GUIDANCE_NEGATIVE_CONSTANT = 'classifier_free_guidance_negative'
 PRNG_KEY_CONSTANT = 'prng_key'
 MAX_LENGTH_CONSTANT = 'max_length'
 
+# Emit key under which the streaming sampler surfaces its per-step sampled codes
+# (in the depthformer's *unique* indexing scheme). A wrapping combinator/system
+# can recover the generated tokens from the emits tree without re-running the
+# sampler. See ``StreamingEncoderDecoderSampler.step_with_emits``.
+SAMPLED_CODES_EMIT_KEY = 'sampled_codes'
+
 # MLX does not use structured PRNG keys like JAX.
 # Use mx.array for RNG state (seeds).
 PRNGKeyBatch = Any
@@ -404,6 +410,17 @@ class Encoder(nn.Module):
         ),
     ]).make(backend="mlx")
 
+  def encode(
+      self,
+      inputs: sl.Sequence,
+      training: bool = False,
+  ) -> sl.Sequence:
+    got_multi_tokens = inputs.values.ndim > inputs.mask.ndim
+    custom_embedding = self.config.embedding is not None
+    if got_multi_tokens and not custom_embedding:
+      inputs = inputs.apply_values(lambda v: mx.squeeze(v, axis=-1))
+    return self.body.layer(inputs, training=training)
+
 
 class MultivariateDecoder(sl.Emitting):
   """A decoder model that generates multivariate sequences.
@@ -439,6 +456,7 @@ class MultivariateDecoder(sl.Emitting):
     num_active_codebooks: int | None = None
 
     soft_cap_logits: float | None = None
+    temporal_input_dropout_prob: float = 0.0
     name: str | None = None
 
     def make(self):
@@ -493,6 +511,18 @@ class MultivariateDecoder(sl.Emitting):
 
     # temporal_inputs has shape (B, T, D)
     temporal_inputs = embedded.apply_values(_mean_in_f32, axis=-2)[:, :-1]
+
+    if self.config.temporal_input_dropout_prob > 0 and training:
+      drop_example = mx.random.uniform(
+          shape=(batch_size,) + (1,) * (temporal_inputs.ndim - 1)
+      )
+      temporal_inputs = temporal_inputs.apply_values(
+          lambda v: mx.where(
+              drop_example >= self.config.temporal_input_dropout_prob,
+              v,
+              0.0,
+          )
+      )
 
     # temporal_outputs has shape (B, T, D)
     temporal_outputs = self.temporal_body.layer(
@@ -754,6 +784,7 @@ class EncoderDecoder(nn.Module):
     decoder: MultivariateDecoder.Config
     conditioning_name: str | None = None
     streaming_encoder: bool = False
+    whole_source_dropout_rate: float = 0.0
     name: str | None = None
 
     def make(self) -> 'EncoderDecoder':
@@ -776,6 +807,17 @@ class EncoderDecoder(nn.Module):
     """Returns a SequenceLayer that samples from this model."""
     return self.sampler
 
+  def _apply_conditioning_dropout(
+      self, source: sl.Sequence, training: bool
+  ) -> sl.Sequence:
+    """Applies conditioning dropout to the source sequence."""
+    conditioning_dropout = sl.Dropout.Config(
+        rate=self.config.whole_source_dropout_rate,
+        broadcast_dims=tuple(range(1, source.ndim)),
+        name='conditioning_dropout',
+    ).make()
+    return conditioning_dropout.layer(source, training=training)
+
   def encode(
       self,
       source: sl.Sequence,
@@ -783,7 +825,9 @@ class EncoderDecoder(nn.Module):
       conditioning: sl.Sequence | None = None,
   ) -> sl.Sequence:
     del conditioning
-    return self.encoder.layer(source, training=training)
+    if self.config.whole_source_dropout_rate > 0:
+      source = self._apply_conditioning_dropout(source, training)
+    return self.encoder.encode(source, training=training)
 
   # def __call__(
   #     self,
@@ -976,6 +1020,25 @@ class StreamingEncoderDecoderSampler(sl.SequenceLayer):
       )
 
     return state
+
+  def step_with_emits(
+      self,
+      x: sl.Sequence,
+      state: sl.State,
+      *,
+      constants: sl.Constants | None = None,
+      **kwargs,
+  ) -> tuple[sl.Sequence, sl.State, dict]:
+    """Steps the sampler, additionally emitting the sampled codes.
+
+    The base ``SequenceLayer`` emits ``()``. We surface this layer's output —
+    the per-step sampled depthformer codes (in the *unique* indexing scheme) —
+    under ``SAMPLED_CODES_EMIT_KEY`` so a wrapping combinator/system can recover
+    the generated tokens without re-running the sampler. Purely additive: the
+    returned output and state are identical to ``step``.
+    """
+    y, state = self.step(x, state, constants=constants)
+    return y, state, {SAMPLED_CODES_EMIT_KEY: y}
 
   @sl.check_step
   def step(

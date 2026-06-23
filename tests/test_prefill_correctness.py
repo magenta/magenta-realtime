@@ -25,6 +25,7 @@ serialization, though it does not explicitly verify the generative quality of
 the prefilled state itself.
 """
 
+import os
 import unittest
 import mlx.core as mx
 import numpy as np
@@ -42,6 +43,30 @@ from magenta_rt import paths
 # CI checkpoint: mrt2_small.safetensors (downloaded by the CI workflow).
 _CI_CHECKPOINT = 'mrt2_small.safetensors'
 
+# mrt2_base (the DEFAULT_CHECKPOINT, 2.4 B params) has a load peak of ~15 GB even
+# at bf16, so it OOM-kills (SIGKILL) on a 16 GB machine. Skip gracefully below
+# this threshold rather than taking the whole test process down with it.
+_MIN_RAM_GIB = 24.0
+
+
+def _total_ram_gib():
+    """Best-effort total system RAM in GiB, or None if it can't be determined."""
+    try:
+        import psutil
+        return psutil.virtual_memory().total / 2**30
+    except Exception:
+        pass
+    try:
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 2**30
+    except (ValueError, OSError, AttributeError):
+        pass
+    try:
+        import subprocess
+        return int(subprocess.check_output(["sysctl", "-n", "hw.memsize"])) / 2**30
+    except Exception:
+        return None
+
+
 class TestPrefillCorrectness(unittest.TestCase):
 
     @classmethod
@@ -49,6 +74,14 @@ class TestPrefillCorrectness(unittest.TestCase):
         checkpoint_path = paths.resolve_checkpoint(_CI_CHECKPOINT)
         if not checkpoint_path.exists():
             raise unittest.SkipTest(f"Checkpoint not found: {checkpoint_path}")
+
+        ram = _total_ram_gib()
+        if ram is not None and ram < _MIN_RAM_GIB:
+            raise unittest.SkipTest(
+                f"{paths.DEFAULT_CHECKPOINT} needs ~{_MIN_RAM_GIB:.0f} GiB RAM to "
+                f"load (2.4 B params, ~15 GB bf16 peak); this host has "
+                f"{ram:.1f} GiB. Use a larger host to run this test."
+            )
 
         print('Building MLX model (compute_dtype=bfloat16)...')
         mrt_model = model.MagentaRT2ModelSmall()

@@ -1,6 +1,7 @@
 # cache/junk
 *.pyc
 .DS_Store
+*.ipynb_checkpoints/
 
 # dev
 .venv/
@@ -9,6 +10,7 @@ node_modules/
 # artifacts
 .coverage
 *.npy
+*.egg-info/
 benchmark_build/
 build/
 dist/
