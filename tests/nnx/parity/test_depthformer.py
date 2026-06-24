@@ -15,8 +15,9 @@
 """Tests for ``magenta_rt.nnx.depthformer`` and friends.
 
 Construction smoke + a multi-step streaming run on a tiny config.
-Numerical parity vs the Linen implementation comes in M7 with the
-weight-bridge tests.
+Numerical parity against the JAX/Linen implementation lives in the
+jax<->nnx parity tests (``test_jax_logit_parity.py`` for a single step,
+``test_e2e_jax_nnx_code_parity.py`` end to end).
 """
 
 from __future__ import annotations
@@ -43,8 +44,7 @@ def _build_tiny_decoder(seed: int = 0) -> DepthformerDecoder:
 
     # Decoder embedder is a plain Embedding over the full vocab; the
     # depthformer broadcasts it across the codebook axis at lookup
-    # time. (For real shipping configs this is a ScaledEmbedding —
-    # ports verbatim in M6.)
+    # time. (Real shipping configs use a ScaledEmbedding instead.)
     embedder = nnx.Embed(
         num_embeddings=vocab, features=16, rngs=rngs,
     )

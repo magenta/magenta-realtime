@@ -28,7 +28,7 @@ For each bridge we:
 
 This validates the bridge correctness without needing the real
 multi-GB checkpoint. End-to-end real-weight loading is exercised in
-M8's smoke test.
+``test_real_checkpoint.py``.
 """
 
 from __future__ import annotations

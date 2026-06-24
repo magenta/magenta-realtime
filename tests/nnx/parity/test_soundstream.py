@@ -14,8 +14,8 @@
 
 """Construction + smoke tests for ``magenta_rt.nnx.spectrostream`` modules.
 
-A full numerical-parity test against the Linen reference codec is
-covered in M7 with the weight bridge; here we just check that:
+A full numerical-parity test against the JAX/Linen reference codec
+lives in ``test_spectrostream_jax_parity.py``; here we just check that:
 
 * The encoder + decoder construct and run end-to-end on random
   weights with channel_splits=2 (the production-stereo config).
@@ -41,9 +41,10 @@ def _build_tiny_codec(seed: int = 0) -> SpectroStream:
 
     Shapes: stereo (num_channels=2), 16 STFT bins → 4-bin bottleneck,
     two ratio levels (×2 each in time and freq) so total time stride
-    is 4 samples. ``channel_splits=None`` here so the M5 smoke isn't
+    is 4 samples. ``channel_splits=None`` here so this smoke isn't
     coupled to the production-config mults/recombo arithmetic;
-    channel_splits=2 parity lands in M7 with a real model spec.
+    channel_splits=2 parity against a real model spec lives in
+    ``test_spectrostream_jax_parity.py``.
     """
     rngs = nnx.Rngs(seed)
     quantizer = ResidualVectorQuantizer(

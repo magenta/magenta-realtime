@@ -15,9 +15,10 @@
 """Streaming codec round-trip parity for ``magenta_rt.nnx.spectrostream``.
 
 The full streaming concat-vs-non-streaming bit-equality test requires
-a real (loaded) checkpoint — that lands in M7. Here we exercise the
-streaming lifecycle (init_cache / remove_cache / multi-step run) on
-a tiny codec to pin the API contract.
+a real (loaded) checkpoint — that lives in
+``test_spectrostream_jax_parity.py``. Here we exercise the streaming
+lifecycle (init_cache / remove_cache / multi-step run) on a tiny codec
+to pin the API contract.
 """
 
 from __future__ import annotations
@@ -73,9 +74,10 @@ def test_streaming_codec_chunk_concat_matches_full(rng_key):
     """Streaming + non-streaming codec on the same codes produce the
     same audio length (within the streaming output's emitted region).
 
-    Bit-exact parity comes in M7 once a real bridge is wired; here we
-    verify the streaming lifecycle correctness — init_cache,
-    per-chunk forward, and the final concatenated length.
+    Bit-exact parity against the JAX codec on a real checkpoint lives in
+    ``test_spectrostream_jax_parity.py``; here we verify the streaming
+    lifecycle correctness — init_cache, per-chunk forward, and the final
+    concatenated length.
     """
     full = _build_codec(seed=42)
     stream = _build_codec(seed=42)
