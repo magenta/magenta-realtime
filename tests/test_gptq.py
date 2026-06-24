@@ -24,7 +24,11 @@ Usage:
 
 import unittest
 
-import mlx.core as mx
+import pytest
+
+# MLX is an optional, importability-gated backend; skip the whole module wherever
+# it can't be imported (e.g. WSL2 without mlx) rather than erroring at collection.
+mx = pytest.importorskip("mlx.core")
 
 from magenta_rt.mlx.gptq import gptq_quantize_weight, _pack_int4
 

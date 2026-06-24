@@ -27,9 +27,15 @@ the prefilled state itself.
 
 import os
 import unittest
-import mlx.core as mx
+
 import numpy as np
 import numpy.testing as npt
+import pytest
+
+# MLX is an optional, importability-gated backend (ships for Apple Silicon and,
+# increasingly, a CUDA/Linux build). Skip the whole module wherever it can't be
+# imported (e.g. WSL2 without mlx) rather than erroring at collection.
+mx = pytest.importorskip("mlx.core")
 
 import magenta_rt  # noqa: F401 — activates vendored sequence_layers
 import sequence_layers.mlx as sl
