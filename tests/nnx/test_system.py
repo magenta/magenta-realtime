@@ -31,7 +31,7 @@ from tests.nnx.parity.test_system_e2e import _build_tiny_system
 
 def _make_system(jit: bool = False, seed: int = 0) -> MagentaRT2System:
     return MagentaRT2System(
-        size="tiny",
+        size="mrt2_small",
         model=_build_tiny_system(seed),
         restore=False,
         temperature=1.0,

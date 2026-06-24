@@ -29,7 +29,7 @@ jax.config.update("jax_enable_x64", False)
 def test_scan_generate_matches_per_step_loop():
     # Tiny untrained preset (random weights) — exercises the full
     # depthformer + codec generate path without a checkpoint.
-    mrt = MagentaRT2System(size="tiny", restore=False, seed=0)
+    mrt = MagentaRT2System(size="mrt2_small", restore=False, seed=0)
 
     frames = 6
     # Each generate(state=None) resets the stream from the same seed, so the

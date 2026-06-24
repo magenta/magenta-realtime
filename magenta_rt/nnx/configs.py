@@ -126,50 +126,9 @@ class MagentaRT2ModelSmall(MagentaRT2ModelBase):
     encoder_max_past_horizon: int = 41
     decoder_temporal_self_attention_max_past_horizon: int = 41
     decoder_temporal_cross_attention_max_past_horizon: int = 41
-
-
-class TinyTestPreset(MagentaRT2ModelBase):
-    """Tiny untrained model for fast smoke tests (single-channel, no MusicCoCa)."""
-
-    encoder_size: ModelSpec = ModelSpec(
-        num_layers=1, model_dims=32, num_heads=4, dim_per_head=8, hidden_dims=64,
-        ffn_use_gated_activation=False,
-    )
-    decoder_temporal_size: ModelSpec = ModelSpec(
-        num_layers=1, model_dims=32, num_heads=4, dim_per_head=8, hidden_dims=64,
-        ffn_use_gated_activation=False,
-    )
-    decoder_depth_size: ModelSpec = ModelSpec(
-        num_layers=1, model_dims=32, num_heads=4, dim_per_head=8, hidden_dims=64,
-        ffn_use_gated_activation=False,
-    )
-
-    use_pretrained_musiccoca_embedder: bool = False
-    encoder_max_past_horizon: int = 3
-    decoder_temporal_self_attention_max_past_horizon: int = 3
-    decoder_temporal_cross_attention_max_past_horizon: int = 3
-
-    @property
-    def target_tokens_config(self) -> TokensConfig:
-        return TokensConfig(
-            key="ss_target_tokens", codebook_size=8, rvq_levels=3,
-            rvq_truncation_level=3, num_extra_tokens=4, frame_rate=25.0,
-        )
-
-    @property
-    def input_configs(self) -> Sequence[TokensConfig]:
-        return (
-            TokensConfig(
-                key="tiny_input", codebook_size=24, rvq_levels=1,
-                rvq_truncation_level=1, num_extra_tokens=4, frame_rate=25.0,
-            ),
-        )
-
-
 MODEL_REGISTRY: dict[str, type[MagentaRT2ModelBase]] = {
     "mrt2_base": MagentaRT2ModelBase,
     "mrt2_small": MagentaRT2ModelSmall,
-    "tiny": TinyTestPreset,
 }
 
 

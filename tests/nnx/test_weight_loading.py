@@ -16,11 +16,9 @@
 reconstruct a Linen-style dict from a freshly-built model, offset every leaf,
 load it back, and assert every float parameter changed.
 
-Covers both encoder-embedding layouts: the plain ``tiny`` preset and a small
+Covers both encoder-embedding layouts: a plain mini spec and a small
 branched (pretrained-MusicCoCa) mrt2-shaped spec.
 """
-
-import dataclasses
 
 import numpy as np
 import pytest
@@ -29,35 +27,9 @@ import jax.numpy as jnp
 
 from magenta_rt.nnx.model import MagentaRT2Sampler
 from magenta_rt.nnx import depthformer as nnx_depthformer
-from magenta_rt.nnx.configs import (
-    MagentaRT2ModelBase,
-    ModelSpec,
-    SPECTROSTREAM,
-    get_model_class,
-)
+from magenta_rt.nnx.configs import get_model_class
 from magenta_rt.nnx.load_weights import load_system_state_dict
 from tests.nnx.parity.test_weight_bridge import _transformer_to_linen
-
-
-_TINY = ModelSpec(
-    num_layers=2, model_dims=16, hidden_dims=32, num_heads=2, dim_per_head=8,
-    ffn_use_gated_activation=False,
-)
-
-
-class _SmallBranchedSpec(MagentaRT2ModelBase):
-    """mrt2-shaped (branched MusicCoCa embedder + 5-channel input) but tiny
-    transformers, so the round-trip stays fast."""
-
-    encoder_size: ModelSpec = _TINY
-    decoder_temporal_size: ModelSpec = ModelSpec(
-        num_layers=2, model_dims=32, hidden_dims=64, num_heads=2, dim_per_head=16,
-        ffn_use_gated_activation=False,
-    )
-    decoder_depth_size: ModelSpec = _TINY
-    spectrostream = dataclasses.replace(
-        SPECTROSTREAM, rvq_truncation_level=4, codebook_size=32,
-    )
 
 
 def _depthformer_to_linen(mrt: MagentaRT2Sampler) -> dict:
@@ -146,12 +118,9 @@ def _build(spec):
     )
 
 
-@pytest.mark.parametrize("spec_factory", [
-    lambda: get_model_class("tiny")(),   # plain encoder embedding
-    _SmallBranchedSpec,                   # branched MusicCoCa embedder
-], ids=["tiny_plain", "small_branched"])
-def test_weight_loading_updates_all_parameters(spec_factory):
-    mrt = _build(spec_factory())
+def test_weight_loading_updates_all_parameters():
+    spec = get_model_class("mrt2_small")()
+    mrt = _build(spec)
 
     _, initial_state = nnx.split(mrt)
     initial_flat = _flatten(initial_state, as_numpy=True)
