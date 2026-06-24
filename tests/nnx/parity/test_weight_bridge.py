@@ -54,7 +54,7 @@ from magenta_rt.nnx.transformer import (
     Encoder, FFN, MultiChannelEmbedding, SelfAttentionBlock, Transformer,
 )
 
-from .conftest import assert_close
+from ..conftest import assert_close
 
 
 # ---------------------------------------------------------------------------
