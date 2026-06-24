@@ -487,7 +487,6 @@ MODEL_REGISTRY: dict[str, type[MagentaRT2ModelBase]] = {
 }
 
 
-
 def get_model_class(name: str) -> type[MagentaRT2ModelBase]:
   """Look up a model class by its short registry name."""
   if name not in MODEL_REGISTRY:
