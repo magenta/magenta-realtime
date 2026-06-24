@@ -67,11 +67,6 @@ def spectrostream_dir() -> pathlib.Path:
     return resources_dir() / "spectrostream"
 
 
-def mt3_dir() -> pathlib.Path:
-    """~/Documents/Magenta/magenta-rt-v2/resources/mt3 — MT3 transcription checkpoints."""
-    return resources_dir() / "mt3"
-
-
 def models_dir() -> pathlib.Path:
     """~/Documents/Magenta/magenta-rt-v2/models — exported .mlxfn model directories."""
     return _MAGENTA_HOME / "models"
