@@ -32,6 +32,8 @@ import flax.traverse_util as flaxtu
 import sequence_layers.mlx as sl
 from sequence_layers.mlx import weight_converter
 
+from magenta_rt import paths
+
 
 def _load_jax_params(path):
   """Load JAX checkpoint as a nested dict of numpy arrays."""
@@ -415,19 +417,12 @@ def load_spectrostream_weights(
 
   # SpectroStream encoder (conv layers). The depthformer checkpoint does NOT
   # contain the SpectroStream encoder (only the decoder + quantizer, under
-  # ``soundstream``) — the encoder ships as a standalone file. Prefer a sibling
-  # ``encoder.safetensors`` next to the checkpoint; otherwise fall back to the
-  # shared resources copy (``resources/spectrostream/encoder.safetensors``).
-  # Without this the encoder stays randomly initialised and ``waveform_to_codes``
-  # produces garbage codes (audio→codes round-trip corr ~0 instead of ~0.64) —
-  # which silently corrupted SFT dataset exports.
-  encoder_path = os.path.join(os.path.dirname(checkpoint_path), 'encoder.safetensors')
-  if not os.path.exists(encoder_path):
-    # No sibling encoder next to the checkpoint — fall back to the shared
-    # resources copy. resolve_encoder_weights() only builds the path (it can't
-    # raise); the os.path.exists check below handles a missing fallback too.
-    from magenta_rt import paths
-    encoder_path = str(paths.resolve_encoder_weights())
+  # ``soundstream``) — the encoder ships as a standalone file in the shared
+  # resources directory (``resources/spectrostream/encoder.safetensors``).
+  # Without it the encoder stays randomly initialised and ``waveform_to_codes``
+  # produces garbage codes (audio→codes round-trip corr ~0 instead of ~0.64),
+  # which silently corrupts SFT dataset exports.
+  encoder_path = str(paths.resolve_encoder_weights())
   if os.path.exists(encoder_path):
     print('  Loading SpectroStream encoder...')
     # Materialize all deferred conv layers by running a dummy step for encoder.
