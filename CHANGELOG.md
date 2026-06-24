@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Batch/offline generation support with `nnx.scan` (using `scan=True`).
   - Added CLI subcommand `mrt nnx generate`.
 - Added a vendored minimal copy of the `AudioTree` container under `magenta_rt/_vendor/audiotree/` for fallback support when the PyPI package is not installed.
-- Added demo notebook `notebooks/demo_magenta_rt_v2_nnx.ipynb` and scripts to compare latency between JAX Linen and JAX NNX.
+- Added an `NNX API` demo section to `notebooks/python_inference_demo.ipynb` and scripts to compare latency between JAX Linen and JAX NNX.
 
 ### Changed
 
