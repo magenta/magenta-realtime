@@ -103,8 +103,8 @@ def broadcast_scalar(value, batch_size: int, name: str, dtype) -> np.ndarray:
 def discretize_cfg(value: float, step: float, max_bin: int) -> int:
   """Map a CFG scale in [-1.0, 7.0] to a discrete conditioning token index.
 
-  Same binning as ``magenta_rt.mlx.system.discretize_cfg`` (float64); shared
-  here so the nnx and mlx_pure systems don't re-implement it per backend.
+  Same binning as the MLX system; shared here so the backends don't re-implement
+  it separately.
 
   Args:
     value: CFG scale; clamped to [-1.0, 7.0].

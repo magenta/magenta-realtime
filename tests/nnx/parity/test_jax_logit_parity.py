@@ -17,8 +17,7 @@
 ``magenta_rt.nnx`` is a flax.nnx port of the JAX/Linen reference
 (``magenta_rt.jax``). The other parity tests here pin individual nnx
 leaf layers against ``flax.linen`` primitives; this one pins the *whole
-depthformer* against the JAX/Linen system end-to-end, the same way
-``tests/mlx_pure/parity/test_jax_logit_parity.py`` pins ``mlx_pure``.
+depthformer* against the JAX/Linen system end-to-end.
 
 Both pipelines run at **fp32 compute** so the comparison is a clean
 implementation-vs-implementation check with no bf16 quantization noise:
