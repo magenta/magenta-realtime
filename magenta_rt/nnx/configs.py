@@ -76,11 +76,6 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
     decoder_temporal_self_attention_max_past_horizon: int = 25
     decoder_temporal_cross_attention_max_past_horizon: int = 25
 
-    sampling_eval_seconds: int = 60
-    top_k: Optional[int] = 40
-    top_p: Optional[float] = None
-    cf_guidance_scale: float | tuple[float, ...] = (4.0, 2.0, 4.0)
-
     # NOTE(dropout): these spec fields are NOT auto-applied. nnx transformer
     # dropout is implemented (magenta_rt.nnx.transformer) and applied only when
     # EncoderDecoder.from_config(dropout_prob=...) is passed a nonzero value
