@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for ``magenta_rt.nnx.configs``: registry round-trips and a
-construction smoke for the smallest registered spec.
+"""Tests for registry round-trips and a construction smoke for the
+smallest registered spec in ``magenta_rt.nnx.model``.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 from flax import nnx
 
 from magenta_rt.nnx.depthformer import EncoderDecoder
-from magenta_rt.nnx.configs import (
+from magenta_rt.nnx.model import (
     MagentaRT2ModelBase,
     MagentaRT2ModelSmall,
     MODEL_REGISTRY,

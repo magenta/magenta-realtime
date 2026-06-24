@@ -38,7 +38,6 @@ _RUNTIME_MODULES = [
     "magenta_rt.nnx.conv",
     "magenta_rt.nnx.cache",
     "magenta_rt.nnx.sample_utils",
-    "magenta_rt.nnx.configs",
 ]
 
 

@@ -106,12 +106,11 @@ mrt.disable_streaming()           # deallocates caches and disables streaming
 |---------------------|------------------------------------------------------------------------------------------------------------------|
 | `nnx.attention`     | `LocalSelfAttention`, `StreamingCrossAttention`                                                                  |
 | `nnx.cache`         | `LocalKVCache`, `OverlapAddCache`                                                                                |
-| `nnx.configs`       | `ModelSpec`, `TokensConfig`, `MODEL_REGISTRY`, `get_model_class`, `MagentaRT2Model*`                             |
 | `nnx.conv`          | `Conv2D`, `Conv2DTranspose`, `AveragePooling2D`, `Upsample2D`, `ParallelChannels`, `remove_cache`                |
 | `nnx.depthformer`   | `DepthformerDecoder`, `EncoderDecoder`, `DecodeState`                                                            |
 | `nnx.generate`      | CLI driver (`--skip-restore`, `--checkpoint`)                                                                    |
 | `nnx.load_weights`  | `load_from_jax_safetensors`                                                                                      |
-| `nnx.model`         | `MagentaRT2Sampler`                                                                                              |
+| `nnx.model`         | `ModelSpec`, `TokensConfig`, `MODEL_REGISTRY`, `get_model_class`, `MagentaRT2Model*`, `MagentaRT2Sampler`          |
 | `nnx.sample_utils`  | `sample_categorical_with_temperature`                                                                            |
 | `nnx.system`        | `MagentaRT2System` (exported as `magenta_rt.MagentaRT2Nnx`), `MagentaRT2State`                                   |
 | `nnx.signal`        | `STFT`, `InverseSTFT`, `hann_window`, `inverse_stft_window_fn`, `frame`, `overlap_and_add`                       |

@@ -43,7 +43,6 @@ from .transformer import (
     Encoder, MultiChannelEmbedding, Transformer, TransformerBlock,
 )
 from .load_weights import load_from_jax_safetensors
-from . import configs
 
 __all__ = [
     # Cache
@@ -69,6 +68,4 @@ __all__ = [
     "MagentaRT2Sampler",
     # Weight loading
     "load_from_jax_safetensors",
-    # Submodules
-    "configs",
 ]

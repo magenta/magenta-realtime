@@ -48,8 +48,7 @@ import numpy as np
 from einops import rearrange
 from flax import nnx
 
-from .configs import get_model_class
-from .model import MagentaRT2Sampler
+from .model import MagentaRT2Sampler, get_model_class
 from audiotree import AudioTree
 
 from .. import conditioning
@@ -124,8 +123,8 @@ class MagentaRT2System:
         """Initialise the system: build the model and load weights.
 
         Args:
-          size: Model variant name (a ``magenta_rt.nnx.configs.MODEL_REGISTRY``
-              key: ``mrt2_base`` / ``mrt2_small`` / ``tiny``).
+          size: Model variant name (a ``magenta_rt.nnx.model.MODEL_REGISTRY``
+              key: ``mrt2_base`` / ``mrt2_small``).
           style_model: MusicCoCa instance for text/audio -> embedding. If None,
               one is created lazily on first ``embed_style`` call (the TFLite
               models are not needed for token-conditioned generation).

@@ -37,7 +37,6 @@ from magenta_rt import paths
 import safetensors.flax as safetensors_flax
 from flax import nnx
 
-from magenta_rt.nnx import configs as nnx_configs
 from magenta_rt.nnx import model as nnx_model
 
 
@@ -52,7 +51,7 @@ pytestmark = pytest.mark.checkpoint
 def bridged_system():
     if not CHECKPOINT.exists():
         pytest.skip(f"checkpoint not found at {CHECKPOINT}")
-    spec = nnx_configs.get_model_class("mrt2_small")()
+    spec = nnx_model.get_model_class("mrt2_small")()
     mrt = nnx_model.MagentaRT2Sampler.from_preset("mrt2_small", int16_outputs=False, rngs=nnx.Rngs(0))
     mrt.load_checkpoint(CHECKPOINT)
     return mrt, spec

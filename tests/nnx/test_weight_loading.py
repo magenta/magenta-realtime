@@ -25,9 +25,8 @@ import pytest
 from flax import nnx
 import jax.numpy as jnp
 
-from magenta_rt.nnx.model import MagentaRT2Sampler
+from magenta_rt.nnx.model import MagentaRT2Sampler, get_model_class
 from magenta_rt.nnx import depthformer as nnx_depthformer
-from magenta_rt.nnx.configs import get_model_class
 from magenta_rt.nnx.load_weights import load_system_state_dict
 from tests.nnx.parity.test_weight_bridge import _transformer_to_linen
 

@@ -171,7 +171,6 @@ def _run_nnx_fp32(checkpoint_path: Path) -> dict:
     """
     import jax
     import jax.numpy as jnp
-    from magenta_rt.nnx import configs as nnx_configs
     from magenta_rt.nnx import depthformer as nnx_depthformer
     from magenta_rt.nnx import model as nnx_model
     from magenta_rt.nnx.sample_utils import sample_categorical_with_temperature
@@ -179,7 +178,7 @@ def _run_nnx_fp32(checkpoint_path: Path) -> dict:
     # nnx specs are plain (class-attribute) classes, not dataclasses, so
     # subclass to override ``dtype`` to fp32 compute. ``param_dtype`` stays
     # fp32 and the checkpoint params are fp32, so the depthformer runs in fp32.
-    _base = nnx_configs.get_model_class("mrt2_small")
+    _base = nnx_model.get_model_class("mrt2_small")
 
     class _Fp32Spec(_base):
         dtype = jnp.float32

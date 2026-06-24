@@ -154,7 +154,6 @@ def test_multistep_codes_match_jax_fp32(smallm4air_checkpoint):
     pytest.importorskip("jax")
     pytest.importorskip("sequence_layers.jax")
     import jax.numpy as jnp
-    from magenta_rt.nnx import configs as nnx_configs
     from magenta_rt.nnx import depthformer as nnx_depthformer
     from magenta_rt.nnx import model as nnx_model
 
@@ -163,7 +162,7 @@ def test_multistep_codes_match_jax_fp32(smallm4air_checkpoint):
     # fp32 nnx depthformer (spec rebuilt with dtype=float32 by subclassing —
     # nnx specs are plain class-attribute classes, not dataclasses);
     # only the depthformer is needed, so spectrostream is omitted.
-    _base = nnx_configs.get_model_class("mrt2_small")
+    _base = nnx_model.get_model_class("mrt2_small")
 
     class _Fp32Spec(_base):
         dtype = jnp.float32
