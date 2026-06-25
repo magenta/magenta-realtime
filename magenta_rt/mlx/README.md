@@ -9,10 +9,10 @@ This subpackage represents the original production codebase target, modeling mod
 The fastest route to generate audio using a safetensors checkpoint from the shell:
 
 ```sh
-python -m magenta_rt.mlx.generate \
+mrt mlx generate \
     --model mrt2_small \
     --checkpoint mrt2_small.safetensors \
-    --num-steps 100 --output outputs/generated_audio.wav
+    --duration 4.0
 ```
 
 For programmatic model building and weight loading directly in your own application code:

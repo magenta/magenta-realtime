@@ -11,7 +11,7 @@ bf16); RMSNorm always reduces in fp32. See
 ## Quick start
 
 ```sh
-python -m magenta_rt.nnx.generate \
+mrt nnx generate \
     --model mrt2_small \
     --checkpoint mrt2_small.safetensors \
     --duration 4.0 \
