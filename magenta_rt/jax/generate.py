@@ -19,6 +19,7 @@ import time
 
 from magenta_rt import paths
 from magenta_rt import MagentaRT2Jax
+from magenta_rt.config import MUSICCOCA
 
 logging.basicConfig(level=logging.INFO, force=True)
 
@@ -40,8 +41,7 @@ def main(
         checkpoint=checkpoint,
         temperature=temperature,
         top_k=top_k,
-        cfg_musiccoca=cfg_musiccoca,
-        cfg_notes=cfg_notes,
+        cfg_scales=cfg_scales,
     )
 
     embedding = mrt.embed_style(prompt, use_mapper=True)
@@ -50,7 +50,7 @@ def main(
 
     # --- Benchmark ---
     start_time = time.time()
-    wav, state = mrt.generate(style=embedding, frames=frames)
+    wav, state = mrt.generate(conditioning={MUSICCOCA.key: embedding}, frames=frames)
     elapsed = time.time() - start_time
     ms_per_step = (elapsed / frames) * 1000
     print(f"Generated {frames} frames in {elapsed:.1f}s "

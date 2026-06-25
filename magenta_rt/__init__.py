@@ -20,7 +20,7 @@ _vendor_hook.install()
 del _vendor_hook
 
 __version__ = "2.0.2"
-__all__ = ["MagentaRT2Jax", "MagentaRT2Mlx", "MagentaRT2Mlxfn"]
+__all__ = ["MagentaRT2Jax", "MagentaRT2Mlx", "MagentaRT2StdMlxfn"]
 
 
 def __getattr__(name):
@@ -42,13 +42,13 @@ def __getattr__(name):
           "Install them with: pip install magenta-rt[mlx]"
       ) from e
     return MagentaRT2System
-  if name == "MagentaRT2Mlxfn":
+  if name == "MagentaRT2StdMlxfn":
     try:
-      from magenta_rt.mlx.system import MagentaRT2SystemMlxfn
+      from magenta_rt.mlx.system import MagentaRT2SystemStdMlxfn
     except ImportError as e:
       raise ImportError(
-          "MagentaRTV2SystemMlxfn requires MLX dependencies. "
+          "MagentaRTV2SystemStdMlxfn requires MLX dependencies. "
           "Install them with: pip install magenta-rt[mlx]"
       ) from e
-    return MagentaRT2SystemMlxfn
+    return MagentaRT2SystemStdMlxfn
   raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

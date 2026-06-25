@@ -18,6 +18,8 @@ import logging
 import time
 
 from magenta_rt import paths
+from magenta_rt.config import MUSICCOCA
+
 
 logging.basicConfig(level=logging.INFO, force=True)
 
@@ -38,14 +40,19 @@ def main(
     duration: float = 4.0,
     use_mlxfn: bool = True,
 ):
+    cfg_scales = {
+        'musiccoca': cfg_musiccoca,
+        'notes': cfg_notes,
+        'drums': 1.0,
+    }
+    
     if use_mlxfn:
-        from magenta_rt import MagentaRT2Mlxfn
-        mrt = MagentaRT2Mlxfn(
+        from magenta_rt import MagentaRT2StdMlxfn
+        mrt = MagentaRT2StdMlxfn(
             size=model_name,
             temperature=temperature,
             top_k=top_k,
-            cfg_musiccoca=cfg_musiccoca,
-            cfg_notes=cfg_notes,
+            cfg_scales=cfg_scales
         )
     else:
         from magenta_rt import MagentaRT2Mlx
@@ -54,8 +61,7 @@ def main(
             checkpoint=checkpoint,
             temperature=temperature,
             top_k=top_k,
-            cfg_musiccoca=cfg_musiccoca,
-            cfg_notes=cfg_notes,
+            cfg_scales=cfg_scales,
             bits=bits,
             quantize_group_size=quantize_group_size,
         )
@@ -66,7 +72,7 @@ def main(
 
     # --- Benchmark ---
     start_time = time.time()
-    wav, state = mrt.generate(style=embedding, frames=frames)
+    wav, state = mrt.generate(conditioning={MUSICCOCA.key: embedding}, frames=frames)
     elapsed = time.time() - start_time
     ms_per_step = (elapsed / frames) * 1000
     print(f"Generated {frames} frames in {elapsed:.1f}s "
@@ -85,7 +91,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--model", default=paths.DEFAULT_MODEL_NAME, type=str,
                         help=f"Model variant name (default: {paths.DEFAULT_MODEL_NAME}).")
-    parser.add_argument("--bits", default=None, type=int, choices=[2, 3, 4, 5, 6, 8])
+    parser.add_argument("--bits", default=None, type=int, choices=[2, 3, 4, 5, 6, 8, 16, 32])
     parser.add_argument("--quantize-group-size", default=None, type=int,
         help="Only matters if `--bits` is set.")
     parser.add_argument("--prompt", default=None, type=str, help="Text conditioning for MusicCoCa.")

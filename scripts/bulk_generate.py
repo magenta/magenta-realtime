@@ -30,7 +30,8 @@ import pandas as pd
 from pathlib import Path
 from scipy.io import wavfile
 
-from magenta_rt import MagentaRT2Mlxfn
+from magenta_rt import MagentaRT2StdMlxfn
+from magenta_rt.config import MUSICCOCA
 
 logging.basicConfig(level=logging.INFO, force=True)
 
@@ -53,12 +54,15 @@ def main():
     frames = args.duration_sec * 25  # 25 fps
 
     # --- Init system ---
-    mrt = MagentaRT2Mlxfn(
+    mrt = MagentaRT2StdMlxfn(
         size=args.size,
         temperature=args.temperature,
         top_k=args.top_k,
-        cfg_musiccoca=args.cfg_musiccoca,
-        cfg_notes=args.cfg_notes,
+        cfg_scales={
+            'musiccoca': args.cfg_musiccoca,
+            'notes': args.cfg_notes,
+            'drums': 1.0,
+        }
     )
 
     # --- Load prompts ---
@@ -78,7 +82,7 @@ def main():
         embedding = mrt.embed_style(prompt_text, use_mapper=True)
 
         start_time = time.time()
-        wav, _ = mrt.generate(style=embedding, frames=frames)
+        wav, _ = mrt.generate(conditioning={MUSICCOCA.key: embedding}, frames=frames)
         elapsed = time.time() - start_time
         print(f"  Done in {elapsed:.1f}s ({frames/elapsed:.1f} steps/s)")
 

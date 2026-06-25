@@ -31,6 +31,13 @@ from .load_weights import load_weights
 from .. import audio
 from .. import musiccoca
 from .. import paths
+from ..config import (
+    DRUM_PIANOROLL,
+    INPUT_SPECTROSTREAM,
+    MOSIC,
+    MUSICCOCA,
+    PIANOROLL_WITH_ONSETS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -182,9 +189,7 @@ class MagentaRT2System:
       checkpoint: str | None = None,
       temperature: float = 1.3,
       top_k: int = 40,
-      cfg_musiccoca: float = 3.0,
-      cfg_notes: float = 1.0,
-      cfg_drums: float = 1.0,
+      cfg_scales: dict[str, float] | None = None,
       bits: int | None = 8,
       quantize_group_size: int | None = None,
   ):
@@ -197,9 +202,11 @@ class MagentaRT2System:
       checkpoint: Override checkpoint filename. If None, looked up from size.
       temperature: Sampling temperature.
       top_k: Top-k sampling threshold.
-      cfg_musiccoca: Classifier-free guidance scale for MusicCoCa.
-      cfg_notes: Classifier-free guidance scale for notes.
-      cfg_drums: Classifier-free guidance scale for drums.
+      cfg_scales: Classifier-free guidance scale for the different inputs.
+          Standard models need musiccoca, notes, and drums, while A2A models
+          need musiccoca, audio, and mosic.
+          Note: The CFG scales don't expand the inference batch but are used
+          as additional conditioning tokens.
       bits: Quantization bit width (4 or 8). None means no quantization.
       quantize_group_size: Group size for quantization. If None, defaults to
           32 for 4-bit and 64 for 8-bit.
@@ -249,22 +256,15 @@ class MagentaRT2System:
     # --- Sampling defaults ---
     self.temperature = temperature
     self.top_k = top_k
-    self.cfg_musiccoca = cfg_musiccoca
-    self.cfg_notes = cfg_notes
-    self.cfg_drums = cfg_drums
+    self.cfg_scales = cfg_scales or {
+        'musiccoca': 3.0,
+        'notes': 1.0,
+        'drums': 1.0,
+    }
 
     # --- Derived constants ---
-    self._num_musiccoca_tokens = self._model.input_configs[0].rvq_truncation_level
-    self._num_notes = self._model.input_configs[1].rvq_truncation_level
-    self._drum_tokens = self._model.input_configs[2].rvq_truncation_level
-    self._cfg_tokens = sum(
-        cfg.rvq_truncation_level for cfg in self._model.input_configs[3:]
-    )
-    self._num_channels = (
-        self._num_musiccoca_tokens
-        + self._num_notes
-        + self._drum_tokens
-        + self._cfg_tokens
+    self._num_channels = sum(
+      x.rvq_truncation_level for x in self._model.input_configs
     )
 
     # --- Warm up ---
@@ -275,11 +275,11 @@ class MagentaRT2System:
     logger.info('Warming up...')
     t0 = time.time()
 
-    dummy_style = [1] * self._num_musiccoca_tokens
-    dummy_notes = [-1] * self._num_notes
-    dummy_drums = [-1] * self._drum_tokens
-    dummy_cfg = [-1] * self._cfg_tokens
-    block, constants = self._build_conditioning(dummy_style, dummy_notes, dummy_drums, dummy_cfg)
+    conditioning = {}
+    for cfg in self._model.input_configs:
+      conditioning[cfg.key] = [-1] * cfg.rvq_truncation_level
+
+    block, constants = self._build_conditioning(conditioning)
 
     input_spec = sl.ChannelSpec(
         shape=(self._num_channels,), dtype=mx.int32,
@@ -316,10 +316,8 @@ class MagentaRT2System:
 
   def _build_conditioning(
       self,
-      style: musiccoca.StyleTokens | list[int],
-      notes: list[int] | None = None,
-      drums: list[int] | None = None,
-      cfgs: list[int] | None = None,
+      conditioning: dict[str, list[int] | np.ndarray],
+      cfg_scales: dict[str, float] | None = None,
       temperature: float | None = None,
       top_k: int | None = None,
   ) -> tuple[sl.Sequence, dict]:
@@ -330,37 +328,47 @@ class MagentaRT2System:
       and constants contains temperature, top_k, CFG scales, and negative
       conditioning sequences.
     """
+    cond_list = []
 
-    style_tokens = list(style) if not isinstance(style, list) else style
-    notes_tokens = notes if notes is not None else [-1] * self._num_notes
-    drums_tokens = drums if drums is not None else [-1] * self._drum_tokens
-    # Default cfgs_tokens [20, 20, 4] => cfg values [3.0, 3.0, 3.0]
-    if cfgs is None:
-      cfgs_tokens = [
-          int((self.cfg_musiccoca + 1.0) / 0.2),
-          int((self.cfg_notes + 1.0) / 0.2),
-          4,
-      ]
-    else:
-      cfgs_tokens = cfgs
+    # Merge class defaults with passed overrides
+    scales = self.cfg_scales.copy() if self.cfg_scales else {}
+    if cfg_scales:
+      scales.update(cfg_scales)
 
-    assert len(style_tokens) == self._num_musiccoca_tokens, (
-        f'Expected {self._num_musiccoca_tokens} style tokens, got {len(style_tokens)}'
-    )
-    assert len(notes_tokens) == self._num_notes, (
-        f'Expected {self._num_notes} notes, got {len(notes_tokens)}'
-    )
-    assert len(drums_tokens) == self._drum_tokens, (
-        f'Expected {self._drum_tokens} drums, got {len(drums_tokens)}'
-    )
-    assert len(cfgs_tokens) == self._cfg_tokens, (
-        f'Expected {self._cfg_tokens} CFG tokens, got {len(cfgs_tokens)}'
-    )
+    # ---
+    for cfg in self._model.input_configs:
+      # If the tokens were passed as conditioning
+      if cfg.key in conditioning:
+        tokens = list(conditioning[cfg.key])
+
+      # If it's CFG
+      elif cfg.cfg_scale_keys:
+        step = 8.0 / (cfg.codebook_size - 1)
+        tokens = []
+        for scale_key in cfg.cfg_scale_keys:
+          token = discretize_cfg(
+            scales.get(scale_key, 3.0),
+            step,
+            cfg.codebook_size - 1
+          )
+          tokens.append(token)
+        
+        tokens = tokens[:cfg.rvq_truncation_level]
+      
+      # Otherwise, use default unconditioned tokens
+      else:
+        tokens = [-1] * cfg.rvq_truncation_level
+
+      assert len(tokens) == cfg.rvq_truncation_level, (
+          f'Expected {cfg.rvq_truncation_level} tokens for {cfg.key},'
+          f' got {len(tokens)}'
+      )
+      cond_list.extend(tokens)
 
     offset = NUM_RESERVED_TOKENS + 1  # +1 for dropout token
 
     # Positive conditioning.
-    cond = np.array(style_tokens + notes_tokens + drums_tokens + cfgs_tokens, dtype=np.int32) + offset
+    cond = np.array(cond_list, dtype=np.int32) + offset
     block = sl.Sequence(
         mx.array(cond.reshape(1, 1, -1), dtype=mx.int32),
         mx.array([[True]], dtype=mx.bool_),
@@ -376,12 +384,8 @@ class MagentaRT2System:
 
   def generate(
       self,
-      style: musiccoca.StyleEmbedding | None = None,
-      notes: list[int] | None = None,
-      drums: list[int] | None = None,
-      cfg_musiccoca: float | None = None,
-      cfg_notes: float | None = None,
-      cfg_drums: float | None = None,
+      conditioning: dict[str, list[int] | np.ndarray] | None = None,
+      cfg_scales: dict[str, float] | None = None,
       temperature: float | None = None,
       top_k: int | None = None,
       frames: int = 25,
@@ -390,30 +394,10 @@ class MagentaRT2System:
     """Generate audio from style conditioning.
 
     Args:
-      style: Style embedding (768-dim ndarray from embed_style). None means
-          unconditional/masked.
-      notes: Notes conditioning (128 ints). Each slot represents the state of
-          the corresponding pitch (0-127). The state can be:
-          -1: means the pitch is masked out.
-           0: means the pitch is off.
-           1: means the pitch is on, but it's not the first time.
-           2: means the pitch is on for the first time (i.e., onset)
-           3: means the pitch is on (model has the freedom to play it as an
-              onset or continuation).
-        None means masked/silent (all pitches masked out).
-      drums: Drums conditioning (1 int).
-        -1: means masked
-         0: no drum
-         1: play drum
-      cfg_musiccoca: MusicCoCa classifier-free-guidance scale, a float in
-        [-1.0, 7.0]. None falls back to ``self.cfg_musiccoca``. Discretized to
-        a conditioning token with a 0.2 step (token 0 -> -1.0, token 1 -> -0.8,
-        ..., token 40 -> 7.0).
-      cfg_notes: Notes CFG scale, a float in [-1.0, 7.0]. None falls back to
-        ``self.cfg_notes``. Discretized with a 0.2 step like cfg_musiccoca.
-      cfg_drums: Drums CFG scale, a float in [-1.0, 7.0]. None falls back to
-        ``self.cfg_drums``. Discretized with a 1.0 step (token 0 -> -1.0,
-        token 1 -> 0.0, ..., token 8 -> 7.0).
+      conditioning: Dictionary mapping TokensConfig.key strings to their values
+        Values can be lists of integers (tokens) or raw embeddings (e.g. Style)
+      cfg_scales: Optional dictionary to override default CFG scales for this call.
+          Example: {'musiccoca': 5.0, 'notes': 3.0}
       temperature: Sampling temperature. None falls back to
         ``self.temperature``.
       top_k: Top-k sampling threshold. None falls back to ``self.top_k``.
@@ -425,30 +409,40 @@ class MagentaRT2System:
       (waveform, state) — a Waveform at 48kHz stereo, and the updated state
       for continuation.
     """
-    # --- Resolve style to tokens ---
-    if style is None:
-      style_tokens = [-1] * self._num_musiccoca_tokens
-    else:
-      style_tokens = self._style_model.tokenize(style).tolist()
+    conditioning = conditioning or {}
+    tokenized_conditioning = {}
+    
+    for key, value in conditioning.items():
+      if value is None:
+        continue
 
-    # Pad or truncate to expected length.
-    if len(style_tokens) < self._num_musiccoca_tokens:
-      style_tokens = style_tokens + [-1] * (self._num_musiccoca_tokens - len(style_tokens))
-    style_tokens = style_tokens[:self._num_musiccoca_tokens]
+      # If it's already an array or list of tokens (not float embedding), no need to tokenize
+      if isinstance(value, np.ndarray) and value.dtype in (np.float32, np.float64, np.float16, mx.float32, mx.float16, mx.bfloat16):
+        pass # Float embedding, needs tokenization
+      elif isinstance(value, (list, np.ndarray)):
+        tokenized_conditioning[key] = list(value)
+        continue
 
-    # --- Resolve CFG scales and discretize to conditioning tokens ---
-    cfg_musiccoca = self.cfg_musiccoca if cfg_musiccoca is None else cfg_musiccoca
-    cfg_notes = self.cfg_notes if cfg_notes is None else cfg_notes
-    cfg_drums = self.cfg_drums if cfg_drums is None else cfg_drums
-    cfgs = [
-        discretize_cfg(cfg_musiccoca, 0.2, 40),
-        discretize_cfg(cfg_notes, 0.2, 40),
-        discretize_cfg(cfg_drums, 1.0, 8),
-    ]
+      # Otherwise, get truncation level and tokenize
+      cfg = next((c for c in self._model.input_configs if c.key == key), None)
+      if cfg is None:
+        raise ValueError(f'No config found for key {key}')
+
+      if key == MUSICCOCA.key:
+        tokens = self._style_model.tokenize(value).tolist()
+      else:
+        raise ValueError(
+          f"Automatic tokenization for '{key}' is not implemented."
+        )
+
+      # Pad or truncate to expected length.
+      if len(tokens) < cfg.rvq_truncation_level:
+        tokens = tokens + [-1] * (cfg.rvq_truncation_level - len(tokens))
+      tokenized_conditioning[key] = tokens[:cfg.rvq_truncation_level]
 
     # --- Build conditioning ---
     block, constants = self._build_conditioning(
-        style_tokens, notes, drums, cfgs, temperature, top_k
+        tokenized_conditioning, cfg_scales, temperature, top_k
     )
 
     # --- Init state if needed ---
@@ -510,9 +504,7 @@ class MagentaRT2SystemMlxfn:
       style_model: musiccoca.MusicCoCa | None = None,
       temperature: float = 1.3,
       top_k: int = 40,
-      cfg_musiccoca: float = 3.0,
-      cfg_notes: float = 1.0,
-      cfg_drums: float = 1.0,
+      cfg_scales: dict[str, float] | None = None,
       warmup_steps: int = 5,
   ):
     """Initialise from an exported .mlxfn model directory.
@@ -523,9 +515,9 @@ class MagentaRT2SystemMlxfn:
           a default MusicCoCa is created.
       temperature: Sampling temperature.
       top_k: Top-k sampling threshold.
-      cfg_musiccoca: Classifier-free guidance scale for MusicCoCa.
-      cfg_notes: Classifier-free guidance scale for notes.
-      cfg_drums: Classifier-free guidance scale for drums.
+      cfg_scales: Classifier-free guidance scale for the different inputs.
+          Standard models need musiccoca, notes, and drums, while A2A models
+          need musiccoca, audio, and mosic.
       warmup_steps: Number of warmup inference steps.
     """
     model_name = size or paths.DEFAULT_MODEL_NAME
@@ -549,23 +541,22 @@ class MagentaRT2SystemMlxfn:
     mx.eval(self._initial_state)
     logger.info('Loaded %d state arrays', len(self._initial_state))
 
-    self._rvq_depth = 12
-
     # --- Style model ---
     self._style_model = style_model or musiccoca.MusicCoCa()
 
     # --- Conditioning layout ---
-    self._num_musiccoca_tokens = 12
-    self._num_notes = 128
-    self._num_drums = 1
-    self._num_cfgs = 3  # musiccoca-cfg, notes-cfg, drums-cfg
+    model_instance = model_configs.get_model_class(model_name)()
+    self.input_configs = model_instance.input_configs
+    self._rvq_depth = model_instance.target_tokens_config.rvq_truncation_level
 
     # --- Sampling parameters ---
     self.temperature = temperature
     self.top_k = top_k
-    self.cfg_musiccoca = cfg_musiccoca
-    self.cfg_notes = cfg_notes
-    self.cfg_drums = cfg_drums
+    self.cfg_scales = cfg_scales or {
+        'musiccoca': 3.0,
+        'notes': 1.0,
+        'drums': 1.0,
+    }
 
     self._sample_rate = 48_000
 
@@ -576,9 +567,12 @@ class MagentaRT2SystemMlxfn:
     """Run a few dummy steps to warm up MLX kernel caches."""
     logger.info('Warming up (%d steps)...', steps)
     t0 = time.time()
-    args = self._build_mlxfn_args(
-        style_tokens=[-1] * self._num_musiccoca_tokens,
-    )
+    
+    conditioning = {}
+    for cfg in self.input_configs:
+      conditioning[cfg.key] = [-1] * cfg.rvq_truncation_level
+      
+    args = self._build_mlxfn_args(conditioning)
     state = list(self._initial_state)
     for _ in range(steps):
       outputs = self._fn(args + state)
@@ -607,115 +601,97 @@ class MagentaRT2SystemMlxfn:
 
   def _build_mlxfn_args(
       self,
-      style_tokens: list[int],
-      notes: list[int] | None = None,
-      drums: list[int] | None = None,
-      cfg_musiccoca: float | None = None,
-      cfg_notes: float | None = None,
-      cfg_drums: float | None = None,
+      conditioning: dict[str, list[int] | np.ndarray],
+      cfg_scales: dict[str, float] | None = None,
       temperature: float | None = None,
       top_k: int | None = None,
   ) -> list[mx.array]:
     """Build the flat arg list expected by the exported mlxfn.
 
-    The exported function signature is:
-        fn([cond, temperature, top_k, cfg_musiccoca, cfg_notes, cfg_drums,
-            neg_musiccoca, neg_notes, forced_tokens, *state])
-
     Returns:
       List of mx.array arguments (without state — caller appends that).
     """
-    notes_tokens = notes if notes is not None else [-1] * self._num_notes
-    drums_tokens = drums if drums is not None else [-1] * self._num_drums
+    
+    cond_list = []
+    tokenized_conditioning = {}
 
-    cfg_musiccoca = self.cfg_musiccoca if cfg_musiccoca is None else cfg_musiccoca
-    cfg_notes = self.cfg_notes if cfg_notes is None else cfg_notes
-    cfg_drums = self.cfg_drums if cfg_drums is None else cfg_drums
+    for cfg in self.input_configs:
+      if cfg.cfg_scale_keys:
+        continue # CFG scales are not discretized in cond array for mlxfn
+      elif cfg.key in conditioning:
+        tokens = list(conditioning[cfg.key])
+      else:
+        tokens = [-1] * cfg.rvq_truncation_level # default
+        
+      assert len(tokens) == cfg.rvq_truncation_level, (
+          f'Expected {cfg.rvq_truncation_level} tokens for {cfg.key},'
+          f' got {len(tokens)}'
+      )
+      tokenized_conditioning[cfg.key] = tokens
+      cond_list.extend(tokens)
+      
+    cond = np.array(cond_list, dtype=np.int32) + self._TOKEN_OFFSET
+    cond_array = mx.array(cond.reshape(1, 1, -1), dtype=mx.int32)
+
+    scales = self.cfg_scales.copy() if self.cfg_scales else {}
+    if cfg_scales:
+      scales.update(cfg_scales)
+    
     temperature = self.temperature if temperature is None else temperature
     top_k = self.top_k if top_k is None else top_k
 
-    offset = self._TOKEN_OFFSET
+    return self._build_graph_args(
+        cond_array, tokenized_conditioning, scales, temperature, top_k
+    )
 
-    # Positive conditioning (12 + 128 + 1 = 141 tokens)
-    cond = np.array(
-        style_tokens + notes_tokens + drums_tokens,
-        dtype=np.int32,
-    ) + offset
-    cond_array = mx.array(cond.reshape(1, 1, -1), dtype=mx.int32)
-
-    # Negative conditioning (masked style)
-    masked_style = [-1] * len(style_tokens)
-    neg_mc = np.array(
-        masked_style + notes_tokens + drums_tokens,
-        dtype=np.int32,
-    ) + offset
-    neg_mc_array = mx.array(neg_mc.reshape(1, 1, -1), dtype=mx.int32)
-
-    # Negative conditioning (masked notes)
-    masked_notes = [-1] * len(notes_tokens)
-    neg_n = np.array(
-        style_tokens + masked_notes + drums_tokens,
-        dtype=np.int32,
-    ) + offset
-    neg_n_array = mx.array(neg_n.reshape(1, 1, -1), dtype=mx.int32)
-
-    return [
-        cond_array,
-        mx.array([temperature]),
-        mx.array([top_k], dtype=mx.int32),
-        mx.array([cfg_musiccoca]),
-        mx.array([cfg_notes]),
-        mx.array([cfg_drums]),
-        neg_mc_array,
-        neg_n_array,
-        mx.zeros((1, 0, self._rvq_depth), dtype=mx.int32),  # forced_tokens
-    ]
+  def _build_graph_args(
+      self,
+      cond_array: mx.array,
+      tokenized: dict[str, list[int]],
+      scales: dict[str, float],
+      temperature: float,
+      top_k: int,
+  ) -> list[mx.array]:
+    raise NotImplementedError("Subclasses must implement _build_graph_args")
 
   def generate(
       self,
-      style: musiccoca.StyleEmbedding | None = None,
-      notes: list[int] | None = None,
-      drums: list[int] | None = None,
-      cfg_musiccoca: float | None = None,
-      cfg_notes: float | None = None,
-      cfg_drums: float | None = None,
+      conditioning: dict[str, list[int] | np.ndarray] | None = None,
+      cfg_scales: dict[str, float] | None = None,
       temperature: float | None = None,
       top_k: int | None = None,
       frames: int = 25,
       state: list[mx.array] | None = None,
   ) -> tuple[audio.Waveform, list[mx.array]]:
-    """Generate audio from style conditioning.
+    
+    conditioning = conditioning or {}
+    tokenized_conditioning = {}
+    
+    for key, value in conditioning.items():
+      if value is None:
+        continue
 
-    Args:
-      style: Style embedding from embed_style(). None means unconditional.
-      notes: Notes conditioning (128 ints, see MagentaRT2System.generate).
-      drums: Drums conditioning (1 int). -1=masked, 0=off, 1=on.
-      cfg_musiccoca: Classifier-free guidance scale for MusicCoCa.
-      cfg_notes: Classifier-free guidance scale for notes.
-      cfg_drums: Classifier-free guidance scale for drums.
-      temperature: Sampling temperature.
-      top_k: Top-k sampling threshold.
-      frames: Number of frames to generate (25 frames ≈ 1 second at 48kHz).
-      state: Streaming state from a previous call. If None, uses initial state.
+      if isinstance(value, np.ndarray) and value.dtype in (np.float32, np.float64, np.float16, mx.float32, mx.float16, mx.bfloat16):
+        pass # Float embedding, needs tokenization
+      elif isinstance(value, (list, np.ndarray)):
+        tokenized_conditioning[key] = list(value)
+        continue
 
-    Returns:
-      (waveform, state) — Waveform at 48kHz stereo, and the updated state.
-    """
-    # --- Resolve style to tokens ---
-    if style is None:
-      style_tokens = [-1] * self._num_musiccoca_tokens
-    else:
-      style_tokens = self._style_model.tokenize(style).tolist()
+      cfg = next((c for c in self.input_configs if c.key == key), None)
+      if cfg is None:
+        raise ValueError(f'No config found for key {key}')
 
-    # Pad / truncate
-    if len(style_tokens) < self._num_musiccoca_tokens:
-      style_tokens += [-1] * (self._num_musiccoca_tokens - len(style_tokens))
-    style_tokens = style_tokens[:self._num_musiccoca_tokens]
+      if key == MUSICCOCA.key:
+        tokens = self._style_model.tokenize(value).tolist()
+      else:
+        raise ValueError(f"Automatic tokenization for '{key}' is not implemented.")
+        
+      if len(tokens) < cfg.rvq_truncation_level:
+        tokens = tokens + [-1] * (cfg.rvq_truncation_level - len(tokens))
+      tokenized_conditioning[key] = tokens[:cfg.rvq_truncation_level]
 
-    # --- Build args ---
     args = self._build_mlxfn_args(
-        style_tokens, notes, drums, cfg_musiccoca, cfg_notes, cfg_drums,
-        temperature, top_k
+        tokenized_conditioning, cfg_scales, temperature, top_k
     )
 
     # --- Init state if needed ---
@@ -748,3 +724,48 @@ class MagentaRT2SystemMlxfn:
         sample_rate=self._sample_rate,
     )
     return waveform, state
+
+
+class MagentaRT2SystemStdMlxfn(MagentaRT2SystemMlxfn):
+  """Standard MagentaRT2 .mlxfn wrapper (musiccoca, notes, drums)."""
+  def _build_graph_args(
+      self,
+      cond_array: mx.array,
+      tokenized: dict[str, list[int]],
+      scales: dict[str, float],
+      temperature: float,
+      top_k: int,
+  ) -> list[mx.array]:
+    """
+    The exported function signature is:
+        fn([cond, temperature, top_k, cfg_musiccoca, cfg_notes, cfg_drums,
+            neg_musiccoca, neg_notes, forced_tokens, *state])
+    """
+    style_tokens = tokenized.get(MUSICCOCA.key, [])
+    notes_tokens = tokenized.get(PIANOROLL_WITH_ONSETS.key, [])
+    drums_tokens = tokenized.get(DRUM_PIANOROLL.key, [])
+    
+    masked_style = [-1] * len(style_tokens)
+    meg_musiccoca = np.array(masked_style + notes_tokens + drums_tokens, dtype=np.int32) + self._TOKEN_OFFSET
+    meg_musiccoca_array = mx.array(meg_musiccoca.reshape(1, 1, -1), dtype=mx.int32)
+
+    masked_notes = [-1] * len(notes_tokens)
+    neg_n = np.array(style_tokens + masked_notes + drums_tokens, dtype=np.int32) + self._TOKEN_OFFSET
+    neg_n_array = mx.array(neg_n.reshape(1, 1, -1), dtype=mx.int32)
+
+    cfg_musiccoca = scales.get('musiccoca', 3.0)
+    cfg_notes = scales.get('notes', 1.0)
+    cfg_drums = scales.get('drums', 1.0)
+
+    return [
+        cond_array,
+        mx.array([temperature]),
+        mx.array([top_k], dtype=mx.int32),
+        mx.array([cfg_musiccoca]),
+        mx.array([cfg_notes]),
+        mx.array([cfg_drums]),
+        meg_musiccoca_array,
+        neg_n_array,
+        mx.zeros((1, 0, self._rvq_depth), dtype=mx.int32),  # forced_tokens
+    ]
+
