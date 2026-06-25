@@ -65,6 +65,28 @@ def _set_param(param: nnx.Param, value: jnp.ndarray) -> None:
     param[...] = value.astype(param[...].dtype)
 
 
+def _set_leaf(leaf, value) -> None:
+    """Assign ``value`` into a state-dict leaf, cast to the leaf's dtype first.
+
+    ``nnx`` implements ``leaf[...] = value`` as ``raw.at[...].set(value)``, so an
+    fp32 source written into a bf16 leaf goes through an implicit scatter cast —
+    a JAX ``FutureWarning`` ("cannot safely cast") that becomes a hard error in a
+    future release. Casting up front keeps source and target dtypes matched.
+    """
+    leaf[...] = jnp.asarray(value).astype(leaf[...].dtype)
+
+
+def _scatter_at(leaf, index: int, value) -> None:
+    """Set ``leaf[index] = value`` on an ``nnx.scan``-stacked leaf.
+
+    Same dtype rationale as :func:`_set_leaf`: the value is cast to the leaf's
+    dtype *before* the ``.at[index].set`` scatter to avoid the implicit-cast
+    ``FutureWarning``.
+    """
+    cur = leaf[...]
+    leaf[...] = cur.at[index].set(jnp.asarray(value).astype(cur.dtype))
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -303,30 +325,33 @@ def load_system_state_dict(state_dict: dict, params_dict: Mapping) -> None:
     enc_body = df["encoder"]["body"]
     enc_emb = state_dict["depthformer"]["encoder"]["embedding"]
     if "encoder_embedding" in enc_body:
-        enc_emb["embedding"][...] = jnp.asarray(
-            enc_body["encoder_embedding"]["embedding"]
-        )
+        _set_leaf(enc_emb["embedding"], enc_body["encoder_embedding"]["embedding"])
     else:
         mul = enc_body["layers_1"]["branched_mulan_embedder"]["mulan_embedder"]
-        enc_emb["mulan_embedder"]["mulan_dequantizer"]["embedding"][...] = jnp.asarray(
-            mul["mulan_dequantizer"]["embedding"]
+        _set_leaf(
+            enc_emb["mulan_embedder"]["mulan_dequantizer"]["embedding"],
+            mul["mulan_dequantizer"]["embedding"],
         )
-        enc_emb["mulan_embedder"]["depth_input_adapter"]["kernel"][...] = jnp.asarray(
-            mul["depth_input_adapter"]["kernel"]
+        _set_leaf(
+            enc_emb["mulan_embedder"]["depth_input_adapter"]["kernel"],
+            mul["depth_input_adapter"]["kernel"],
         )
         reg = enc_body["layers_1"]["branched_regular_embedder"]["regular_embedder"]
-        enc_emb["regular_embedder"]["embedding"][...] = jnp.asarray(reg["embedding"])
-    state_dict["depthformer"]["encoder"]["encoder_ln"]["scale"][...] = jnp.asarray(
-        df["encoder"]["body"]["encoder_ln"]["scale"]
+        _set_leaf(enc_emb["regular_embedder"]["embedding"], reg["embedding"])
+    _set_leaf(
+        state_dict["depthformer"]["encoder"]["encoder_ln"]["scale"],
+        df["encoder"]["body"]["encoder_ln"]["scale"],
     )
     if "bias" in df["encoder"]["body"]["encoder_ln"] and "bias" in state_dict["depthformer"]["encoder"]["encoder_ln"]:
-        state_dict["depthformer"]["encoder"]["encoder_ln"]["bias"][...] = jnp.asarray(
-            df["encoder"]["body"]["encoder_ln"]["bias"]
+        _set_leaf(
+            state_dict["depthformer"]["encoder"]["encoder_ln"]["bias"],
+            df["encoder"]["body"]["encoder_ln"]["bias"],
         )
 
     # 2. Decoder Embedder
-    state_dict["depthformer"]["decoder"]["embedder"]["embedding"]["embedding"][...] = jnp.asarray(
-        df["decoder"]["decoder_embedding"]["embedding"]["embedding"]
+    _set_leaf(
+        state_dict["depthformer"]["decoder"]["embedder"]["embedding"]["embedding"],
+        df["decoder"]["decoder_embedding"]["embedding"]["embedding"],
     )
 
     # 2.5 Depth Input Adapter
@@ -334,8 +359,9 @@ def load_system_state_dict(state_dict: dict, params_dict: Mapping) -> None:
         "depth_input_adapter" in state_dict["depthformer"]["decoder"]
         and "depth_input_adapter" in df["decoder"]["depth_body"]
     ):
-        state_dict["depthformer"]["decoder"]["depth_input_adapter"]["kernel"][...] = jnp.asarray(
-            df["decoder"]["depth_body"]["depth_input_adapter"]["kernel"]
+        _set_leaf(
+            state_dict["depthformer"]["decoder"]["depth_input_adapter"]["kernel"],
+            df["decoder"]["depth_body"]["depth_input_adapter"]["kernel"],
         )
 
     # 3. Temporal Transformer
@@ -354,21 +380,13 @@ def load_system_state_dict(state_dict: dict, params_dict: Mapping) -> None:
 
     # 5. Decoder Tail
     dt = df["decoder"]["depth_body"]
-    state_dict["depthformer"]["decoder"]["final_ln"]["scale"][...] = jnp.asarray(
-        dt["final_ln"]["scale"]
-    )
+    _set_leaf(state_dict["depthformer"]["decoder"]["final_ln"]["scale"], dt["final_ln"]["scale"])
     if "bias" in dt["final_ln"] and "bias" in state_dict["depthformer"]["decoder"]["final_ln"]:
-        state_dict["depthformer"]["decoder"]["final_ln"]["bias"][...] = jnp.asarray(
-            dt["final_ln"]["bias"]
-        )
+        _set_leaf(state_dict["depthformer"]["decoder"]["final_ln"]["bias"], dt["final_ln"]["bias"])
 
-    state_dict["depthformer"]["decoder"]["to_logits"]["kernel"][...] = jnp.asarray(
-        dt["to_logits"]["kernel"]
-    )
+    _set_leaf(state_dict["depthformer"]["decoder"]["to_logits"]["kernel"], dt["to_logits"]["kernel"])
     if "bias" in dt["to_logits"] and "bias" in state_dict["depthformer"]["decoder"]["to_logits"]:
-        state_dict["depthformer"]["decoder"]["to_logits"]["bias"][...] = jnp.asarray(
-            dt["to_logits"]["bias"]
-        )
+        _set_leaf(state_dict["depthformer"]["decoder"]["to_logits"]["bias"], dt["to_logits"]["bias"])
 
 
 def load_transformer_state_dict(transformer_state: dict, transformer_subdict: Mapping, *, has_sinks: bool) -> None:
@@ -397,8 +415,8 @@ def load_transformer_state_dict(transformer_state: dict, transformer_subdict: Ma
 
 
 def _load_attention_state_dict(pure_attn: dict, inner_subdict: Mapping, *, has_sinks: bool) -> None:
-    pure_attn["pre_norm"]["scale"][...] = jnp.asarray(inner_subdict["pre_norm"]["scale"])
-    pure_attn["post_norm"]["scale"][...] = jnp.asarray(inner_subdict["post_norm"]["scale"])
+    _set_leaf(pure_attn["pre_norm"]["scale"], inner_subdict["pre_norm"]["scale"])
+    _set_leaf(pure_attn["post_norm"]["scale"], inner_subdict["post_norm"]["scale"])
 
     attn = pure_attn["attention"]
     inner = inner_subdict["attention"]
@@ -416,24 +434,20 @@ def _load_attention_state_dict(pure_attn: dict, inner_subdict: Mapping, *, has_s
         axis=-1,
     )
 
-    attn["q_proj"]["kernel"][...] = q_proj
-    attn["kv_proj"]["kernel"][...] = kv_proj
-    attn["per_dim_scale_param"][...] = jnp.asarray(inner["per_dim_scale"])
+    _set_leaf(attn["q_proj"]["kernel"], q_proj)
+    _set_leaf(attn["kv_proj"]["kernel"], kv_proj)
+    _set_leaf(attn["per_dim_scale_param"], inner["per_dim_scale"])
 
     if has_sinks and "sink_key_embeddings" in attn:
-        attn["sink_key_embeddings"][...] = jnp.asarray(inner["sink_key_embeddings"])
-        attn["sink_value_embeddings"][...] = jnp.asarray(inner["sink_value_embeddings"])
+        _set_leaf(attn["sink_key_embeddings"], inner["sink_key_embeddings"])
+        _set_leaf(attn["sink_value_embeddings"], inner["sink_value_embeddings"])
 
-    attn["output_projection"]["kernel"][...] = jnp.asarray(inner_subdict["output_projection"]["kernel"])
+    _set_leaf(attn["output_projection"]["kernel"], inner_subdict["output_projection"]["kernel"])
 
 
 def _load_attention_state_dict_at(pure_attn: dict, inner_subdict: Mapping, index: int, *, has_sinks: bool) -> None:
-    pure_attn["pre_norm"]["scale"][...] = pure_attn["pre_norm"]["scale"][...].at[index].set(
-        jnp.asarray(inner_subdict["pre_norm"]["scale"])
-    )
-    pure_attn["post_norm"]["scale"][...] = pure_attn["post_norm"]["scale"][...].at[index].set(
-        jnp.asarray(inner_subdict["post_norm"]["scale"])
-    )
+    _scatter_at(pure_attn["pre_norm"]["scale"], index, inner_subdict["pre_norm"]["scale"])
+    _scatter_at(pure_attn["post_norm"]["scale"], index, inner_subdict["post_norm"]["scale"])
 
     attn = pure_attn["attention"]
     inner = inner_subdict["attention"]
@@ -451,58 +465,38 @@ def _load_attention_state_dict_at(pure_attn: dict, inner_subdict: Mapping, index
         axis=-1,
     )
 
-    attn["q_proj"]["kernel"][...] = attn["q_proj"]["kernel"][...].at[index].set(q_proj)
-    attn["kv_proj"]["kernel"][...] = attn["kv_proj"]["kernel"][...].at[index].set(kv_proj)
-    attn["per_dim_scale_param"][...] = attn["per_dim_scale_param"][...].at[index].set(
-        jnp.asarray(inner["per_dim_scale"])
-    )
+    _scatter_at(attn["q_proj"]["kernel"], index, q_proj)
+    _scatter_at(attn["kv_proj"]["kernel"], index, kv_proj)
+    _scatter_at(attn["per_dim_scale_param"], index, inner["per_dim_scale"])
 
     if has_sinks and "sink_key_embeddings" in attn:
-        attn["sink_key_embeddings"][...] = attn["sink_key_embeddings"][...].at[index].set(
-            jnp.asarray(inner["sink_key_embeddings"])
-        )
-        attn["sink_value_embeddings"][...] = attn["sink_value_embeddings"][...].at[index].set(
-            jnp.asarray(inner["sink_value_embeddings"])
-        )
+        _scatter_at(attn["sink_key_embeddings"], index, inner["sink_key_embeddings"])
+        _scatter_at(attn["sink_value_embeddings"], index, inner["sink_value_embeddings"])
 
-    attn["output_projection"]["kernel"][...] = attn["output_projection"]["kernel"][...].at[index].set(
-        jnp.asarray(inner_subdict["output_projection"]["kernel"])
-    )
+    _scatter_at(attn["output_projection"]["kernel"], index, inner_subdict["output_projection"]["kernel"])
 
 
 def _load_ffn_state_dict(pure_ffn: dict, ffn_subdict: Mapping) -> None:
-    pure_ffn["pre_norm"]["scale"][...] = jnp.asarray(ffn_subdict["pre_norm"]["scale"])
-    pure_ffn["post_norm"]["scale"][...] = jnp.asarray(ffn_subdict["post_norm"]["scale"])
+    _set_leaf(pure_ffn["pre_norm"]["scale"], ffn_subdict["pre_norm"]["scale"])
+    _set_leaf(pure_ffn["post_norm"]["scale"], ffn_subdict["post_norm"]["scale"])
 
     l1 = ffn_subdict["ffn_layer1"]
-    pure_ffn["ffn_layer1"]["kernel"][...] = jnp.asarray(l1["kernel"])
-    pure_ffn["ffn_layer1"]["bias"][...] = jnp.asarray(l1["bias"])
+    _set_leaf(pure_ffn["ffn_layer1"]["kernel"], l1["kernel"])
+    _set_leaf(pure_ffn["ffn_layer1"]["bias"], l1["bias"])
 
     l2 = ffn_subdict["ffn_layer2"]
-    pure_ffn["ffn_layer2"]["kernel"][...] = jnp.asarray(l2["kernel"])
-    pure_ffn["ffn_layer2"]["bias"][...] = jnp.asarray(l2["bias"])
+    _set_leaf(pure_ffn["ffn_layer2"]["kernel"], l2["kernel"])
+    _set_leaf(pure_ffn["ffn_layer2"]["bias"], l2["bias"])
 
 
 def _load_ffn_state_dict_at(pure_ffn: dict, ffn_subdict: Mapping, index: int) -> None:
-    pure_ffn["pre_norm"]["scale"][...] = pure_ffn["pre_norm"]["scale"][...].at[index].set(
-        jnp.asarray(ffn_subdict["pre_norm"]["scale"])
-    )
-    pure_ffn["post_norm"]["scale"][...] = pure_ffn["post_norm"]["scale"][...].at[index].set(
-        jnp.asarray(ffn_subdict["post_norm"]["scale"])
-    )
+    _scatter_at(pure_ffn["pre_norm"]["scale"], index, ffn_subdict["pre_norm"]["scale"])
+    _scatter_at(pure_ffn["post_norm"]["scale"], index, ffn_subdict["post_norm"]["scale"])
 
     l1 = ffn_subdict["ffn_layer1"]
-    pure_ffn["ffn_layer1"]["kernel"][...] = pure_ffn["ffn_layer1"]["kernel"][...].at[index].set(
-        jnp.asarray(l1["kernel"])
-    )
-    pure_ffn["ffn_layer1"]["bias"][...] = pure_ffn["ffn_layer1"]["bias"][...].at[index].set(
-        jnp.asarray(l1["bias"])
-    )
+    _scatter_at(pure_ffn["ffn_layer1"]["kernel"], index, l1["kernel"])
+    _scatter_at(pure_ffn["ffn_layer1"]["bias"], index, l1["bias"])
 
     l2 = ffn_subdict["ffn_layer2"]
-    pure_ffn["ffn_layer2"]["kernel"][...] = pure_ffn["ffn_layer2"]["kernel"][...].at[index].set(
-        jnp.asarray(l2["kernel"])
-    )
-    pure_ffn["ffn_layer2"]["bias"][...] = pure_ffn["ffn_layer2"]["bias"][...].at[index].set(
-        jnp.asarray(l2["bias"])
-    )
+    _scatter_at(pure_ffn["ffn_layer2"]["kernel"], index, l2["kernel"])
+    _scatter_at(pure_ffn["ffn_layer2"]["bias"], index, l2["bias"])
