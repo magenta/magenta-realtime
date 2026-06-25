@@ -13,11 +13,10 @@
 # limitations under the License.
 
 """CLI commands for the flax.nnx backend: ``mrt nnx {generate}``."""
-from pathlib import Path
-
 import click
 
 from magenta_rt.cli import main
+from magenta_rt import paths
 
 
 @main.group()
@@ -26,50 +25,37 @@ def nnx():
 
 
 @nnx.command()
-@click.option("--model", default=None, type=str,
+@click.option("--prompt", default="disco funk", help="Text conditioning for MusicCoCa.")
+@click.option("--model", default=paths.DEFAULT_MODEL_NAME, type=str,
               help="Model variant name (e.g. 'mrt2_small', 'mrt2_base').")
+@click.option("--duration", default=4.0, type=float, help="Duration in seconds.")
+@click.option("--temperature", default=1.3, type=float)
+@click.option("--top-k", default=40, type=int)
+@click.option("--cfg-musiccoca", default=3.0, type=float)
+@click.option("--cfg-notes", default=1.0, type=float)
 @click.option("--checkpoint", default=None, type=str,
               help="Checkpoint filename in checkpoints/ directory.")
 @click.option("--skip-restore", is_flag=True, default=False,
               help="Use random weights.")
-@click.option("--num-steps", default=5, type=int)
-@click.option("--temperature", default=1.0, type=float)
-@click.option("--top-k", default=40, type=int)
-@click.option("--cfg-musiccoca", default=3.0, type=float)
-@click.option("--cfg-notes", default=1.0, type=float)
-@click.option("--num-cfgs", default=0, type=int,
-              help="0 (default): CFG via trained conditioning tokens only "
-                   "(single forward, matches jax/sl-mlx). 1/2: also do "
-                   "logit-space CFG, which double-applies guidance.")
-@click.option("--seed", default=0, type=int)
-@click.option("--output", default=None, type=click.Path(),
-              help="Output WAV path.")
 @click.option("--jit/--no-jit", default=True,
-              help="Wrap the streaming loop in nnx.jit.")
+              help="Wrap the streaming step in jax.jit.")
 @click.option("--scan/--no-scan", default=True,
               help="Use nnx.scan inside --jit (worse performance without scan).")
-def generate(model, checkpoint, skip_restore,
-             num_steps, temperature, top_k, cfg_musiccoca, cfg_notes,
-             num_cfgs, seed, output, jit, scan):
+def generate(prompt, model, duration, temperature, top_k,
+             cfg_musiccoca, cfg_notes, checkpoint, skip_restore, jit, scan):
     """Run nnx inference."""
     from magenta_rt.nnx.generate import main as run
 
-    kwargs = dict(
-        restore=not skip_restore,
-        num_steps=num_steps,
+    run(
+        prompt=prompt,
+        model_name=model,
+        duration=duration,
         temperature=temperature,
         top_k=top_k,
         cfg_musiccoca=cfg_musiccoca,
         cfg_notes=cfg_notes,
-        num_cfgs=num_cfgs,
-        seed=seed,
+        checkpoint=checkpoint,
+        restore=not skip_restore,
         jit=jit,
         scan=scan,
     )
-    if model is not None:
-        kwargs["model_name"] = model
-    if checkpoint is not None:
-        kwargs["checkpoint"] = checkpoint
-    if output is not None:
-        kwargs["output_path"] = Path(output)
-    run(**kwargs)

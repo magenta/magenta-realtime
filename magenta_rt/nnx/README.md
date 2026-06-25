@@ -14,10 +14,8 @@ bf16); RMSNorm always reduces in fp32. See
 python -m magenta_rt.nnx.generate \
     --model mrt2_small \
     --checkpoint mrt2_small.safetensors \
-    --num-steps 100 --num-cfgs 2 \
-    --temperature 1.0 --top-k 40 --cfg-musiccoca 3.0 --cfg-notes 1.0 \
-    --jit \
-    --output outputs/disco_funk.wav
+    --duration 4.0 \
+    --temperature 1.0 --top-k 40 --cfg-musiccoca 3.0 --cfg-notes 1.0
 ```
 
 Pass `--skip-restore` to run with random weights for an end-to-end smoke
@@ -72,6 +70,7 @@ For batch generation, also pass `generate(..., scan=True)` (see below).
 ## Streaming API in your own code
 
 ```python
+import jax
 import jax.numpy as jnp
 from flax import nnx
 from magenta_rt.nnx import MagentaRT2Sampler
@@ -80,23 +79,33 @@ rngs = nnx.Rngs(0)
 mrt = MagentaRT2Sampler.from_preset("mrt2_small", rngs=rngs)
 mrt.load_checkpoint("checkpoints/pianorollbaseline_…")
 
-@nnx.jit
-def step(mrt, source_tokens, temperature=1.3, top_k=40):
+mrt.init_streaming(batch_size=1, rngs=rngs)  # arms streaming caches and variables
+
+# Split the model into static structure (graphdef), parameters (params), and cache state (state)
+graphdef, params, state = nnx.split(mrt, nnx.Param, ...)
+
+# Wrap functional step in jax.jit with state cache buffer donation for maximum speed
+@jax.jit(donate_argnums=1)
+def step(params, state, source_tokens, temperature=1.3, top_k=40):
+    mrt = nnx.merge(graphdef, params, state)
     waveform = mrt.step(
         source_tokens=source_tokens,
         temperature=temperature, top_k=top_k,
     )
-    return waveform.waveform  # [B, 2, 1920] channel-major AudioTree audio
+    _, _, new_state = nnx.split(mrt, nnx.Param, ...)
+    return waveform.waveform, new_state
 
-mrt.init_streaming(batch_size=1, rngs=rngs)  # arms streaming caches and variables
 for source_tokens in stream_of_source_tokens:
-    audio_data = step(
-        mrt,
+    audio_data, state = step(
+        params,
+        state,
         source_tokens=source_tokens,
         temperature=1.3, top_k=40,
     )
     play(audio_data)
 
+# Optional: if you need to access the updated model outside of functional steps:
+mrt = nnx.merge(graphdef, params, state)
 mrt.disable_streaming()           # deallocates caches and disables streaming
 ```
 
