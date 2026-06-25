@@ -69,7 +69,7 @@ Issues = "https://github.com/magenta/magenta-realtime/issues"
 # bridge Linen-format checkpoints via flax (hence flax in the mlx extra).
 # Don't "simplify" flax out of mlx or expect [mlx] to be jax-free.
 [project.optional-dependencies]
-jax = ["jax", "flax>=0.12.7", "optax", "jaxtyping", "typing_extensions"]
+jax = ["jax>=0.10.2", "flax>=0.12.7", "optax", "jaxtyping", "typing_extensions"]
 mlx = ["mlx", "flax>=0.12.7", "typing_extensions"]
 dev = ["jupyter", "ipython", "pytest", "matplotlib", "pytest-cov"]
 
