@@ -31,20 +31,32 @@ tokens), which exercises the full depthformer + codec per frame without loading
 MusicCoCa. Pass ``--prompt`` to condition on a text style instead.
 
 The nnx ``System.generate`` path donates the model to its jitted step (in-place
-cache updates), which is what lets ``mrt2_base`` bf16 stream on a 16 GB card.
-That needs slightly more of the GPU than XLA's 75% default (peak ~10.9 GB; the
-default pool fragments just over it), so this script bumps
-``XLA_PYTHON_CLIENT_MEM_FRACTION`` to 0.85 before importing JAX — harmless for
-the smaller configs, and the reason a re-run shows base fitting. Override by
-exporting the env var yourself.
+cache updates). ``mrt2_base`` bf16 peaks at only ~6.6 GB over the whole
+load+generate lifecycle (~5.2 GB weights + ~1.4 GB activations/cache), so it fits
+a 16 GB card with wide margin. The real hazard is XLA's *preallocation*: at the
+default ``XLA_PYTHON_CLIENT_MEM_FRACTION=0.85`` it grabs ~13.9 GB upfront, which
+fails and fragments whenever the WSL/Windows desktop leaves less than that free —
+OOMing mid-run even though the model needs far less. The ``mrt2_base`` configs
+therefore set ``XLA_PYTHON_CLIENT_PREALLOCATE=false`` so the pool grows on demand
+to ~6.6 GB; the smaller configs keep the default preallocated 0.85 pool. Both are
+``setdefault``, so export either to override.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
-# Must be set before JAX initializes; setdefault respects a user override.
-os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.85")
+# Must be set before JAX initializes; setdefaults so an explicit export wins.
+# mrt2_base bf16 peaks at only ~6.6 GB (load + generate), but XLA's default
+# preallocation grabs ~13.9 GB (MEM_FRACTION=0.85) upfront and OOMs whenever the
+# desktop leaves less than that free. Growing on demand sidesteps it entirely;
+# the default 0.75 cap is still ~2x the real need. Small configs keep the
+# preallocated 0.85 pool.
+if "mrt2_base" in sys.argv:
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+else:
+    os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.85")
 
 import argparse
 import json
