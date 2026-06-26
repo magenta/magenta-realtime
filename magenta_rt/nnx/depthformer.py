@@ -82,7 +82,7 @@ class ConditioningDropout(nnx.Module):
             return x
         keep_prob = 1.0 - self.p
         mask_shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        mask = jax.random.bernoulli(self.dropout_rng(), p=keep_prob, shape=mask_shape)
+        mask = self.dropout_rng.bernoulli(p=keep_prob, shape=mask_shape)
         return jnp.where(mask, x, 0)
 
 
