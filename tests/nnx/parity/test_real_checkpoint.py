@@ -71,7 +71,8 @@ def test_rvq_codes_to_embeddings_bit_exact(bridged_system):
 
 def test_encoder_forward_finite(bridged_system):
     mrt, spec = bridged_system
-    musiccoca = [679, 132, 480, 389, 160, 1010]
+    # 12 mv3 MusicCoCa tokens (matches scripts/generate_test_reference.py).
+    musiccoca = [660, 1016, 295, 206, 857, 841, 391, 857, 619, 70, 401, 22]
     notes = [-1] * (spec.input_num_channels - len(musiccoca))
     src = jnp.asarray(
         (np.array(musiccoca + notes, dtype=np.int32) + 7).reshape(1, 1, -1),

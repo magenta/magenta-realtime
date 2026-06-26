@@ -57,7 +57,8 @@ _CHECKPOINT_NAME = "mrt2_small.safetensors"
 _NUM_STEPS = 45
 _CFG_MUSICCOCA = 3.0
 _CFG_NOTES = 1.0
-_MUSICCOCA = [679, 132, 480, 389, 160, 1010]  # "disco funk" mv212 tokens
+# 12 mv3 MusicCoCa tokens (matches scripts/generate_test_reference.py).
+_MUSICCOCA = [660, 1016, 295, 206, 857, 841, 391, 857, 619, 70, 401, 22]
 _TOKEN_OFFSET = 7  # NUM_RESERVED_TOKENS + 1
 
 

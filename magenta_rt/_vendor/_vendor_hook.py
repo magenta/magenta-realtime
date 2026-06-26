@@ -25,9 +25,7 @@ Vendored here:
 - ``sequence_layers`` (``sequence-layers/sequence_layers/``) — the
   SequenceLayers library the jax/mlx backends are built on.
 - ``audiotree`` (``audiotree/audiotree/``) — a *minimal* copy of the
-  ``AudioTree`` pytree container (https://github.com/DBraun/audiotree). The
-  full package (``TreeWriter`` / ``sources`` / ``transforms``) is only needed
-  by ``magenta_rt.sft``; installing it from PyPI/git shadows this copy.
+  ``AudioTree`` pytree container (https://github.com/DBraun/audiotree).
 """
 
 import importlib.util

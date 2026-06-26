@@ -26,12 +26,11 @@ Skipped automatically when the mrt2_small checkpoint is unavailable (e.g. CI).
 
 from __future__ import annotations
 
+import mlx.core as mx
 import numpy as np
 import pytest
 
 from magenta_rt import paths
-
-mx = pytest.importorskip("mlx.core")
 
 
 @pytest.fixture(scope="module")
@@ -41,7 +40,7 @@ def mrt():
         pytest.skip(f"checkpoint not found: {ckpt}")
     from magenta_rt.mlx.system import MagentaRT2System
 
-    return MagentaRT2System(size="mrt2_small", checkpoint=str(ckpt))
+    return MagentaRT2System(size="mrt2_small")
 
 
 @pytest.fixture(scope="module")
