@@ -32,6 +32,7 @@ from typing import Callable, Optional, Sequence, Union
 
 import jax.numpy as jnp
 import numpy as np
+from audiotree import AudioTree
 from einops import rearrange
 from flax import nnx
 
@@ -921,7 +922,21 @@ class SpectroStream(nnx.Module):
     def embeddings_to_waveform(self, embeddings: jnp.ndarray) -> jnp.ndarray:
         return self.inverse_stft(self.decoder(embeddings))
 
-    def waveform_to_codes(self, audio: jnp.ndarray) -> jnp.ndarray:
+    def waveform_to_codes(
+        self, audio: jnp.ndarray | AudioTree
+    ) -> jnp.ndarray:
+        """Encode a 48 kHz ``[B, C, T]`` waveform into RVQ codes ``[B, T, D]``.
+
+        ``audio`` may be a raw jax/numpy array or an ``AudioTree`` (unwrapped to
+        its waveform; its ``sample_rate`` must match the codec's).
+        """
+        if isinstance(audio, AudioTree):
+            if audio.sample_rate != self.sample_rate:
+                raise ValueError(
+                    f"AudioTree sample_rate {audio.sample_rate} != codec rate "
+                    f"{self.sample_rate}; resample before waveform_to_codes."
+                )
+            audio = jnp.asarray(audio.waveform)
         if self.quantizer is None:
             raise RuntimeError("quantizer not configured")
         return self.quantizer.embeddings_to_codes(self.waveform_to_embeddings(audio))

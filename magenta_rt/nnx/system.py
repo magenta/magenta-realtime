@@ -51,6 +51,7 @@ from flax import nnx
 from .model import MagentaRT2Sampler, get_model_class
 from audiotree import AudioTree
 
+from .. import audio
 from .. import conditioning
 from .. import paths
 
@@ -455,9 +456,11 @@ class MagentaRT2System:
             codes = np.asarray(
                 rearrange(stacked_tree.codes, "n s o q -> n (s o) q")
             )
+            tree = AudioTree(
+                waveform, sample_rate=self.sample_rate, codes=codes,
+            )
         else:
-            audio_chunks = []
-            code_chunks = []
+            trees = []
             for i in range(frames):
                 # A freshly armed stream's first step runs without donation (its
                 # buffers may alias); every later step donates for in-place
@@ -466,17 +469,8 @@ class MagentaRT2System:
                     temperature, top_k, donate=not (fresh and i == 0),
                 )
                 tree, stream = step(self._params, stream, block)
-                audio_chunks.append(tree.waveform)
-                code_chunks.append(tree.codes)
+                trees.append(tree)
 
-            # Audio is channel-major [N, C, T] — chunks concatenate time-last;
-            # codes are frame-major [N, frames, Q] — chunks concatenate on axis 1.
-            waveform = np.asarray(
-                jnp.concatenate(audio_chunks, axis=-1), dtype=np.float32
-            )
-            codes = np.asarray(jnp.concatenate(code_chunks, axis=1))
+            tree = jax.device_get(audio.concatenate(trees))
 
-        tree = AudioTree(
-            waveform, sample_rate=self.sample_rate, codes=codes,
-        )
         return tree, MagentaRT2State(batch_size=N, stream=stream)
