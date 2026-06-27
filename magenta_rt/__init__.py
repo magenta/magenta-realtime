@@ -20,10 +20,19 @@ _vendor_hook.install()
 del _vendor_hook
 
 __version__ = "2.0.2"
-__all__ = ["MagentaRT2Jax", "MagentaRT2Mlx", "MagentaRT2Mlxfn"]
+__all__ = ["MagentaRT2Jax", "MagentaRT2Mlx", "MagentaRT2Mlxfn", "MagentaRT2Nnx"]
 
 
 def __getattr__(name):
+  if name == "MagentaRT2Nnx":
+    try:
+      from magenta_rt.nnx.system import MagentaRT2System
+    except ImportError as e:
+      raise ImportError(
+          "MagentaRT2Nnx requires JAX dependencies. "
+          "Install them with: pip install magenta-rt[jax]"
+      ) from e
+    return MagentaRT2System
   if name == "MagentaRT2Jax":
     try:
       from magenta_rt.jax.system import MagentaRT2System

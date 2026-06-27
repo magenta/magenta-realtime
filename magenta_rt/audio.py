@@ -12,174 +12,143 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Audio processing utils."""
+"""Audio processing utils for :class:`audiotree.AudioTree`.
+
+This module holds magenta-rt's audio *helper functions* (``compute_rms``,
+``apply_gain``, ``peak_normalize``, ``concatenate``, ...).
+The container itself comes straight from the
+`audiotree <https://github.com/DBraun/audiotree>`_ package — import it as
+``from audiotree import AudioTree`` (it is intentionally *not* re-exported
+here). It is a ``flax.struct`` dataclass (a JAX pytree) with:
+
+* ``waveform``: ``[batch, channels, samples]`` float32 audio (**note the
+  channels-first layout** — librosa-native),
+* ``codes``: optional neural-codec tokens; magenta_rt keeps them frame-major
+  ``[batch, nframes, num_codebooks]``,
+* ``metadata``: free-form per-example side data (a pytree node),
+* ``sample_rate``: static (non-pytree) field.
+
+magenta-rt previously shipped a minimal local reimplementation of AudioTree
+(``Waveform``, with a ``[batch, samples, channels]`` layout and
+``samples``/``tokens`` field names); that class — and later its alias —
+have been removed.
+
+Migration notes (old ``Waveform`` -> ``AudioTree``):
+
+* ``.samples`` (audio array) -> ``.waveform`` — beware: ``AudioTree.samples``
+  is the **sample count** (``waveform.shape[-1]``), not the array.
+* ``.tokens`` -> ``.codes``; ``.num_samples`` -> ``.samples``.
+* ``to_mono`` / ``to_stereo`` / ``resample`` / ``from_file`` / ``batch_fn`` /
+  batch indexing & iteration are AudioTree methods.
+* ``write`` is now ``AudioTree.write`` (e.g. ``tree[0].write(path)``);
+  ``compute_rms`` / ``apply_gain`` / ``peak_normalize`` / ``concatenate`` are
+  module-level functions here.
+"""
 
 import functools
-from typing import BinaryIO, Optional
 
+import audiotree
+import jax.numpy as jnp
 import librosa
 import numpy as np
-import resampy
-import soundfile as sf
 
 
-class Waveform:
-  """Simple audio waveform container wrapping f32 numpy array of [nsamp, nch]."""
+def _xp(arr):
+  """Returns the array module (numpy or jax.numpy) backing ``arr``."""
+  return np if isinstance(arr, np.ndarray) else jnp
 
-  def __init__(self, samples: np.ndarray, sample_rate: int):
-    self._samples: Optional[np.ndarray] = None
-    self.samples = samples
-    self._sample_rate = sample_rate
 
-  def __len__(self):
-    return self.num_samples
+# ---------------------------------------------------------------------------
+# librosa-domain analysis (single, materialized waveform)
+# ---------------------------------------------------------------------------
 
-  @property
-  def sample_rate(self) -> int:
-    return self._sample_rate
 
-  @sample_rate.setter
-  def sample_rate(self, value: int):
-    del value
-    raise AttributeError("Sample rate should only be set on construction")
+def _librosa_samples(tree: audiotree.AudioTree) -> np.ndarray:
+  """Returns audio in a librosa-compatible form.
 
-  @property
-  def samples(self) -> np.ndarray:
-    assert self._samples is not None
-    return self._samples
+  Librosa expects: np.ndarray [shape=(n,) or (nch, n)]. With the ``[B, C, T]``
+  layout this is just ``waveform[0]`` (channel-major), squeezed for mono.
+  Only valid for a single (unbatched) waveform.
+  """
+  assert tree.batch_size == 1, (
+      f"librosa ops require a single waveform; got batch_size={tree.batch_size}"
+  )
+  w = np.asarray(tree.waveform)[0]  # [nch, n]
+  return w[0] if w.shape[0] == 1 else w
 
-  @samples.setter
-  def samples(self, value: np.ndarray):
-    if value.ndim == 1:
-      value = value[:, np.newaxis]
-    if not (value.ndim == 2 and value.shape[1] > 0):
-      raise ValueError(f"Invalid shape for audio: {value.shape}")
-    if not np.issubdtype(value.dtype, np.floating):
-      raise TypeError(f"Samples should be np.floating. Got {value.dtype}.")
-    self._samples = np.array(value, dtype=np.float32)
 
-  @property
-  def _librosa_samples(self) -> np.ndarray:
-    """Returns samples in a librosa-compatible form.
+def compute_rms(
+    tree: audiotree.AudioTree,
+    # NOTE: Librosa defaults
+    hop_length_seconds: float = 512 / 22050,
+    frame_length_seconds: float = 2048 / 22050,
+) -> tuple[np.ndarray, np.ndarray]:
+  """Computes RMS amplitude over frames; returns ``(times, rms)``."""
+  rms = librosa.feature.rms(
+      y=_librosa_samples(tree),
+      hop_length=round(hop_length_seconds * tree.sample_rate),
+      frame_length=round(frame_length_seconds * tree.sample_rate),
+  )[0]
+  t = np.arange(rms.shape[0]) * hop_length_seconds
+  return t, rms
 
-    Librosa expects: np.ndarray [shape=(n,) or (2, n)]).
-    """
-    samples = self.samples
-    if self.samples.shape[1] == 1:
-      # Mono audio must be 1D.
-      return self.samples.squeeze(1)
-    else:
-      return samples.T
 
-  @property
-  def num_samples(self) -> int:
-    return self.samples.shape[0]
+def compute_peak_rms(tree: audiotree.AudioTree, *args, **kwargs) -> float:
+  """Computes peak RMS amplitude over frames."""
+  _, rms = compute_rms(tree, *args, **kwargs)
+  peak_rms = np.max(rms)
+  assert peak_rms >= 0
+  return peak_rms
 
-  @property
-  def num_channels(self) -> int:
-    return self.samples.shape[1]
 
-  @property
-  def seconds(self) -> float:
-    return len(self) / self.sample_rate
+def peak_amplitude(tree: audiotree.AudioTree) -> float:
+  """Peak absolute sample value across the whole (batched) waveform."""
+  return float(np.abs(np.asarray(tree.waveform)).max())
 
-  @property
-  def peak_amplitude(self) -> float:
-    return np.abs(self._samples).max()
 
-  @property
-  def peak_rms(self) -> float:
-    return self.compute_peak_rms()
+# ---------------------------------------------------------------------------
+# Transforms (immutable; numpy/jax-agnostic). ``codes`` are carried through
+# unchanged via ``.replace`` — callers that mutate the audio should drop
+# stale codes explicitly if needed.
+# ---------------------------------------------------------------------------
 
-  def compute_rms(
-      self,
-      # NOTE: Librosa defaults
-      hop_length_seconds: float = 512 / 22050,
-      frame_length_seconds: float = 2048 / 22050,
-  ) -> tuple[np.ndarray, np.ndarray]:
-    """Computes RMS amplitude."""
-    rms = librosa.feature.rms(
-        y=self._librosa_samples,
-        hop_length=round(hop_length_seconds * self.sample_rate),
-        frame_length=round(frame_length_seconds * self.sample_rate),
-    )[0]
-    t = np.arange(rms.shape[0]) * hop_length_seconds
-    return t, rms
 
-  def compute_peak_rms(self, *args, **kwargs) -> float:
-    """Computes peak RMS amplitude over frames."""
-    _, rms = self.compute_rms(*args, **kwargs)
-    peak_rms = np.max(rms)
-    assert peak_rms >= 0
-    return peak_rms
+def apply_gain(tree: audiotree.AudioTree, gain: float) -> audiotree.AudioTree:
+  """Applies linear gain, returning a new AudioTree."""
+  return tree.replace(waveform=tree.waveform * gain)
 
-  def apply_gain(self, gain: float, in_place: bool = False) -> "Waveform":
-    """Applies linear gain to samples."""
-    if in_place:
-      self._samples *= gain
-      return self
-    else:
-      return type(self)(self._samples * gain, self.sample_rate)
 
-  def peak_normalize(
-      self, max_value: float = 1.0, in_place: bool = False
-  ) -> "Waveform":
-    """Normalizes audio to a particular amplitude value."""
+def peak_normalize(tree: audiotree.AudioTree, max_value: float = 1.0) -> audiotree.AudioTree:
+  """Normalizes audio to a particular peak amplitude value."""
+  peak = peak_amplitude(tree)
+  gain = 1.0 if peak == 0 else max_value / peak
+  return apply_gain(tree, gain)
 
-    peak = self.peak_amplitude
-    if peak == 0:
-      gain = 1.0
-    else:
-      gain = max_value / peak
 
-    result = self.apply_gain(gain, in_place=in_place)
-    return result
-
-  def resample(self, sample_rate: int) -> "Waveform":
-    if self.sample_rate == sample_rate:
-      return self
-    return Waveform(
-        samples=resampy.resample(
-            self.samples.swapaxes(0, 1), self.sample_rate, sample_rate
-        ).swapaxes(0, 1),
-        sample_rate=sample_rate,
-    )
-
-  def as_stereo(self) -> "Waveform":
-    """Converts a multichannel waveform to stereo."""
-    if self.num_channels == 1:
-      return Waveform(
-          np.concatenate([self.samples, self.samples], axis=1), self.sample_rate
-      )
-    elif self.num_channels == 2:
-      return self
-    else:
-      raise ValueError("Unsupported number of channels for stereo conversion.")
-
-  def as_mono(self, strategy: str = "average") -> "Waveform":
-    """Converts a multichannel waveform to mono."""
-    if self.num_channels == 1:
-      return self
-    if strategy == "average":
-      return Waveform(
-          self.samples.mean(axis=1, keepdims=True), self.sample_rate
-      )
-    elif self.num_channels == 2 and strategy == "left":
-      return Waveform(self.samples[:, 0:1], self.sample_rate)
-    elif self.num_channels == 2 and strategy == "right":
-      return Waveform(self.samples[:, 1:2], self.sample_rate)
-    else:
-      raise ValueError(f"Unsupported strategy: {strategy}")
-
-  def write(self, file: str | BinaryIO, **kwargs):
-    sf.write(file, self.samples, self.sample_rate, **kwargs)
-
-  @classmethod
-  def from_file(cls, file: str | BinaryIO) -> "Waveform":
-    return Waveform(*sf.read(file))
-
-  def __getitem__(self, key: slice) -> "Waveform":
-    return Waveform(self._samples[key], self.sample_rate)
+def concatenate(trees: list[audiotree.AudioTree]) -> audiotree.AudioTree:
+  """Concatenates a list of AudioTrees (and their codes) along the time axis."""
+  if not trees:
+    raise ValueError("No waveforms to concatenate.")
+  all_sample_rates = set(t.sample_rate for t in trees)
+  if len(all_sample_rates) != 1:
+    raise ValueError("All waveforms must have the same sample rate.")
+  sample_rate = all_sample_rates.pop()
+  all_num_channels = set(t.num_channels for t in trees)
+  if len(all_num_channels) != 1:
+    raise ValueError("All waveforms must have the same number of channels.")
+  all_batch_sizes = set(t.batch_size for t in trees)
+  if len(all_batch_sizes) != 1:
+    raise ValueError("All waveforms must have the same batch size.")
+  # Concatenate along the time (samples) axis — the last axis in [B, C, T].
+  xp = _xp(trees[0].waveform)
+  result_waveform = xp.concatenate([t.waveform for t in trees], axis=-1)
+  # Concatenate codes along their frame axis when every tree carries them.
+  code_list = [t.codes for t in trees]
+  if all(c is not None for c in code_list):
+    result_codes = _xp(code_list[0]).concatenate(code_list, axis=1)
+  else:
+    result_codes = None
+  return audiotree.AudioTree(result_waveform, sample_rate, codes=result_codes)
 
 
 @functools.lru_cache(maxsize=1)
@@ -208,22 +177,6 @@ def crossfade_ramp(
   else:
     raise ValueError(f"Unsupported crossfade style: {style}")
   return ramp
-
-
-def concatenate(waveforms: list[Waveform]):
-  """Concatenates a list of waveforms into a single waveform."""
-  if not waveforms:
-    raise ValueError("No waveforms to concatenate.")
-  all_sample_rates = set(w.sample_rate for w in waveforms)
-  if len(all_sample_rates) != 1:
-    raise ValueError("All waveforms must have the same sample rate.")
-  sample_rate = all_sample_rates.pop()
-  all_num_channels = set(w.num_channels for w in waveforms)
-  if len(all_num_channels) != 1:
-    raise ValueError("All waveforms must have the same number of channels.")
-  result_samples = np.concatenate([w.samples for w in waveforms], axis=0)
-  result = Waveform(result_samples, sample_rate)
-  return result
 
 
 def amp_to_db(amp: float, amp_ref: float = 1.0) -> float:

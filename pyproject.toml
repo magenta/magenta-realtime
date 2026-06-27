@@ -37,10 +37,18 @@ dependencies = [
     "huggingface_hub",
     "simple-term-menu",
     "librosa",
-    "resampy",
     "sentencepiece",
     "soundfile",
 ]
+
+[tool.uv]
+# `recurrentgemma` — a base dep, pulled in everywhere via the vendored
+# sequence-layers — uses jaxtyping's old `typeguard.typechecked` pattern, which
+# breaks under ANY typeguard>=3: its `*batch`-style shape annotations make
+# typeguard's AST instrumentor raise `SyntaxError: invalid syntax` at import,
+# taking down `sequence_layers.jax`/`.mlx` (and thus most of the nnx parity
+# suite). Hold the whole env below typeguard 3.
+override-dependencies = ["typeguard<3"]
 
 [tool.uv.sources]
 # NOTE(vendoring): submodule moved to magenta_rt/_vendor/sequence-layers.
@@ -53,9 +61,16 @@ Issues = "https://github.com/magenta/magenta-realtime/issues"
 
 # NOTE(vendoring): Once sequence-layers is on PyPI, add "sequence-layers[mlx]"
 # to mlx (recurrentgemma can then move back to jax-only).
+#
+# NOTE(jax-everywhere): JAX is a dependency of EVERY install, not just [jax]:
+# the base deps pull it via recurrentgemma[jax], and it is also structurally
+# required — audiotree's AudioTree is a flax.struct pytree (jax + flax at
+# import time), magenta_rt/audio.py imports jax.numpy, and the MLX backends
+# bridge Linen-format checkpoints via flax (hence flax in the mlx extra).
+# Don't "simplify" flax out of mlx or expect [mlx] to be jax-free.
 [project.optional-dependencies]
-jax = ["jax", "flax", "optax", "jaxtyping", "typing_extensions"]
-mlx = ["mlx", "flax", "typing_extensions"]
+jax = ["jax>=0.10.2", "flax>=0.12.7", "optax", "jaxtyping", "typing_extensions"]
+mlx = ["mlx", "flax>=0.12.7", "typing_extensions"]
 dev = ["jupyter", "ipython", "pytest", "matplotlib", "pytest-cov"]
 
 # Listener-eval bulk generation
@@ -83,6 +98,12 @@ exclude = ["core/", "examples/", "tools/", "build/", "scripts/", "tests/", "note
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "checkpoint: requires a real safetensors file in checkpoints/",
+    "slow: end-to-end / multi-second tests",
+    "gptq: requires quantized weights",
+    "bf16: bfloat16 mixed-precision path",
+]
 
 [tool.pyink]
 line-length = 80

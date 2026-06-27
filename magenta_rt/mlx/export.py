@@ -277,7 +277,7 @@ def main(
             with open(prompt_csv) as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    tokens = coca.tokenize(coca.embed(row['prompt'])).tolist()
+                    tokens = coca.tokenize(coca.embed_text(row['prompt'])).tolist()
                     musiccoca_prompts.append(tokens[:num_musiccoca_tokens])
             print(f"  Loaded {len(musiccoca_prompts)} calibration prompts from {prompt_csv.name}")
 

@@ -180,6 +180,8 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
   # the model's view of its own past output. This can be useful to encourage
   # Audio-to-Audio models to rely more on the encoder-side input signal.
   temporal_self_attention_dropout_prob: float | None = None
+  whole_source_dropout_rate: float = 0.0
+  temporal_input_dropout_prob: float = 0.0
 
   spectrostream: TokensConfig = SPECTROSTREAM
 
@@ -223,7 +225,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
         self.decoder_temporal_size, dropout_prob=self.dropout_prob
     )
     decoder_depth_spec = dataclasses.replace(
-        self.decoder_depth_size, dropout_prob=0.0
+        self.decoder_depth_size, dropout_prob=self.dropout_prob
     )
     # Convert from decoder_temporal_spec to decoder_depth_spec if different.
     if decoder_temporal_spec.model_dims != decoder_depth_spec.model_dims:
@@ -339,6 +341,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
         name='depthformer',
         conditioning_name='source',
         streaming_encoder=True,
+        whole_source_dropout_rate=self.whole_source_dropout_rate,
         encoder=depthformer.Encoder.Config(
             vocab_size=0,  # unused
             embedding_dimension=encoder_spec.model_dims,
@@ -351,6 +354,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
             num_codebooks=self.target_tokens_config.rvq_truncation_level,
             sos_id=0,
             soft_cap_logits=30.0,
+            temporal_input_dropout_prob=self.temporal_input_dropout_prob,
             # Shared embedding between time-wise and depth-wise model.
             embedder=sl.Serial.Config(
                 [
@@ -474,8 +478,6 @@ class MagentaRT2ModelSmall(MagentaRT2ModelBase):
   encoder_max_past_horizon: int = 41
   decoder_temporal_self_attention_max_past_horizon: int = 41
   decoder_temporal_cross_attention_max_past_horizon: int = 41
-
-
 # ---------------------------------------------------------------------------
 # Model registry – maps short CLI-friendly names to model classes.
 # ---------------------------------------------------------------------------
@@ -483,7 +485,6 @@ MODEL_REGISTRY: dict[str, type[MagentaRT2ModelBase]] = {
     'mrt2_base': MagentaRT2ModelBase,
     'mrt2_small': MagentaRT2ModelSmall,
 }
-
 
 
 def get_model_class(name: str) -> type[MagentaRT2ModelBase]:

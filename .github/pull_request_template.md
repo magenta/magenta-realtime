@@ -14,11 +14,13 @@ Description.
 I ran
 ```bash
 mrt jax generate --model=mrt2_small
+mrt nnx generate --model=mrt2_small
 mrt mlx generate --model=mrt2_small
 mrt mlx generate --model=mrt2_small --no-mlxfn --bits=8
 
 pytest -s tests/test_musiccoca.py
 pytest -s tests/test_prefill_correctness.py
+JAX_DEFAULT_MATMUL_PRECISION=highest pytest -s tests/nnx
 
 python scripts/generate_test_reference.py
 pytest -s tests/test_bitlevel_parity.py

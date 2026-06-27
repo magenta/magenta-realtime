@@ -19,7 +19,8 @@ from pathlib import Path
 
 import numpy as np
 
-from magenta_rt import audio
+from audiotree import AudioTree
+
 from magenta_rt import musiccoca
 from magenta_rt import paths
 
@@ -33,95 +34,72 @@ class MusicCoCaMockTest(unittest.TestCase):
 
   def test_embed_text(self):
     model = musiccoca.MockMusicCoCa()
+    a, b, c = "metal", "rock", "metal"
 
-    a = "metal"
-    b = "rock"
-    c = a[:]
+    # A single string -> [dim]; a sequence -> [B, dim]. __call__ dispatches a
+    # str to embed_text too.
+    for embed in (model.embed_text, model.__call__):
+      single = embed(a)
+      self.assertIsInstance(single, np.ndarray)
+      self.assertEqual(single.shape, (768,))
 
-    for fn in [
-        model.embed_batch_text,
-        model.embed,
-        model.__call__,
-    ]:
-      if fn != model.embed_batch_text:
-        embedded = fn(a)
-        self.assertIsInstance(embedded, np.ndarray)
-        self.assertEqual(embedded.shape, (768,))
-
-      embedded = fn([a, b, c])
-      self.assertEqual(embedded.shape, (3, 768))
-      self.assertTrue(np.array_equal(embedded[0], embedded[2]))
-      self.assertFalse(np.array_equal(embedded[0], embedded[1]))
-
-    with self.assertRaises(TypeError):
-      model.embed_batch_text(a)
+      batch = embed([a, b, c])
+      self.assertEqual(batch.shape, (3, 768))
+      self.assertTrue(np.array_equal(batch[0], batch[2]))
+      self.assertFalse(np.array_equal(batch[0], batch[1]))
 
   def test_embed_audio(self):
     sr = 16000
     model = musiccoca.MockMusicCoCa(
-        musiccoca.MusicCoCaConfiguration(
-            sample_rate=sr,
-            clip_length=1.0,
-        )
+        musiccoca.MusicCoCaConfiguration(sample_rate=sr, clip_length=1.0)
     )
+    noise = np.random.rand(2, sr * 10).astype(np.float32)  # [C, T] channel-major
+    a = AudioTree.create(noise[:, : sr * 1], sr)
+    b = AudioTree.create(noise[:, sr * 1 : sr * 2], sr)
 
-    noise = np.random.rand(sr * 10, 2).astype(np.float32)
+    # The AudioTree carries the batch axis: a [3, C, T] tree -> [3, dim].
+    # Rows 0 and 2 (both `a`) match; row 1 (`b`) differs.
+    batched = AudioTree(
+        waveform=np.stack([a.waveform[0], b.waveform[0], a.waveform[0]], axis=0),
+        sample_rate=sr,
+    )
+    embedded = model.embed_audio(batched)
+    self.assertEqual(embedded.shape, (3, 768))
+    self.assertTrue(np.array_equal(embedded[0], embedded[2]))
+    self.assertFalse(np.array_equal(embedded[0], embedded[1]))
+    # __call__ dispatches an AudioTree to embed_audio (batch axis preserved).
+    self.assertEqual(model(a).shape, (1, 768))
 
-    a = audio.Waveform(noise[: sr * 1], 16000)
-    b = audio.Waveform(noise[sr * 1 : sr * 2], 16000)
-    a_copy = audio.Waveform(a.samples.copy(), 16000)
-
-    # Check basic use.
-    for fn in [
-        model.embed_batch_audio,
-        model.embed,
-        model.__call__,
-    ]:
-      if fn != model.embed_batch_audio:
-        embedded = fn(a)
-        self.assertIsInstance(embedded, np.ndarray)
-        self.assertEqual(embedded.shape, (768,))
-
-      embedded = fn([a, b, a_copy])
-      self.assertEqual(embedded.shape, (3, 768))
-      self.assertTrue(np.array_equal(embedded[0], embedded[2]))
-      self.assertFalse(np.array_equal(embedded[0], embedded[1]))
-
-    # Test framing.
+    # Framing: a batch-1 ([1, C, T]) tree keeps the leading batch axis.
     clip_length_samples = model.config.clip_length_samples
     for num_samples in [0, sr // 2, sr * 2, round(sr * 2.5)]:
-      w = audio.Waveform(noise[:num_samples], 16000)
+      w = AudioTree.create(noise[:, :num_samples], sr)
       for hop_length in [0.5, 1.0, 1.5]:
         hop_length_samples = round(hop_length * sr)
         for pool_across_time in [False, True]:
           for pad_end in [False, True]:
-            embedded = model.embed(
+            embedded = model.embed_audio(
                 w,
                 hop_length=hop_length,
                 pool_across_time=pool_across_time,
                 pad_end=pad_end,
             )
             if pool_across_time:
-              expected_shape = (768,)
+              expected_shape = (1, 768)
             elif pad_end:
-              expected_shape = (np.ceil(num_samples / hop_length_samples), 768)
+              expected_shape = (
+                  1, int(np.ceil(num_samples / hop_length_samples)), 768)
             else:
               num_frames = max(
                   0,
                   (num_samples - clip_length_samples) // hop_length_samples + 1,
               )
-              expected_shape = (num_frames, 768)
+              expected_shape = (1, num_frames, 768)
             self.assertEqual(embedded.shape, expected_shape)
-
-    with self.assertRaises(NotImplementedError):
-      model.embed_batch_audio([
-          audio.Waveform(noise[: sr * 1], 16000),
-          audio.Waveform(noise[: sr * 2], 16000),
-      ])
 
   def test_tokenize(self):
     model = musiccoca.MockMusicCoCa()
-    embedding = model.embed("metal")
+    embedding = model.embed_text("metal")
     tokens = model.tokenize(embedding)
     self.assertIsInstance(tokens, np.ndarray)
     self.assertEqual(tokens.shape, (12,))
@@ -177,26 +155,26 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
 
   def test_text_embedding_shape(self):
     """Text embedding should produce a 768-dim float32 vector."""
-    emb = self.model.embed('a jazz piano trio')
+    emb = self.model.embed_text('a jazz piano trio')
     self.assertEqual(emb.shape, (768,))
     self.assertEqual(emb.dtype, np.float32)
 
   def test_text_embedding_batch(self):
     """Batch text embedding should stack correctly."""
     prompts = list(_GOLDEN_TOKENS.keys())
-    emb = self.model.embed(prompts)
+    emb = self.model.embed_text(prompts)
     self.assertEqual(emb.shape, (len(prompts), 768))
 
   def test_text_embedding_deterministic(self):
     """Same text should always produce the same embedding."""
-    emb1 = self.model.embed('a jazz piano trio')
-    emb2 = self.model.embed('a jazz piano trio')
+    emb1 = self.model.embed_text('a jazz piano trio')
+    emb2 = self.model.embed_text('a jazz piano trio')
     np.testing.assert_array_equal(emb1, emb2)
 
   def test_text_embedding_different_prompts(self):
     """Different prompts should produce different embeddings."""
-    emb_a = self.model.embed('a jazz piano trio')
-    emb_b = self.model.embed('heavy metal guitar riff')
+    emb_a = self.model.embed_text('a jazz piano trio')
+    emb_b = self.model.embed_text('heavy metal guitar riff')
     self.assertFalse(np.array_equal(emb_a, emb_b))
 
   # -- Tokenization ---------------------------------------------------------
@@ -205,14 +183,14 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
     """Tokens should match golden reference values from musiccoca_tokens.py."""
     for prompt, expected in _GOLDEN_TOKENS.items():
       with self.subTest(prompt=prompt):
-        emb = self.model.embed(prompt)
+        emb = self.model.embed_text(prompt)
         tokens = self.model.tokenize(emb)
         self.assertEqual(tokens.tolist(), expected)
 
   def test_tokenize_batch(self):
     """Batch tokenization should produce per-prompt results matching singles."""
     prompts = list(_GOLDEN_TOKENS.keys())
-    embeddings = self.model.embed(prompts)
+    embeddings = self.model.embed_text(prompts)
     tokens_batch = self.model.tokenize(embeddings)
     self.assertEqual(tokens_batch.shape, (len(prompts), 12))
     for i, prompt in enumerate(prompts):
@@ -220,7 +198,7 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
 
   def test_tokenize_values_in_range(self):
     """All token values should be valid codebook indices."""
-    emb = self.model.embed('classical string quartet')
+    emb = self.model.embed_text('classical string quartet')
     tokens = self.model.tokenize(emb)
     self.assertTrue(np.all(tokens >= 0))
     self.assertTrue(np.all(tokens < self.model.config.rvq_codebook_size))
@@ -229,38 +207,38 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
 
   def test_mapper_embedding_shape(self):
     """Mapper embedding should produce a 768-dim float32 vector."""
-    emb = self.model.embed('disco funk', use_mapper=True, seed=0)
+    emb = self.model.embed_text('disco funk', use_mapper=True, seed=0)
     self.assertEqual(emb.shape, (768,))
     self.assertEqual(emb.dtype, np.float32)
 
   def test_mapper_embedding_is_l2_normalized(self):
     """Mapper embedding should be L2 normalized."""
-    emb = self.model.embed('disco funk', use_mapper=True, seed=0)
+    emb = self.model.embed_text('disco funk', use_mapper=True, seed=0)
     np.testing.assert_almost_equal(np.linalg.norm(emb), 1.0, decimal=5)
 
   def test_mapper_embedding_deterministic(self):
     """Same text + seed should always produce the same mapper embedding."""
-    emb1 = self.model.embed('disco funk', use_mapper=True, seed=0)
-    emb2 = self.model.embed('disco funk', use_mapper=True, seed=0)
+    emb1 = self.model.embed_text('disco funk', use_mapper=True, seed=0)
+    emb2 = self.model.embed_text('disco funk', use_mapper=True, seed=0)
     np.testing.assert_array_equal(emb1, emb2)
 
   def test_mapper_embedding_differs_from_unmapped(self):
     """Mapper embedding should differ from plain text embedding."""
-    emb_plain = self.model.embed('disco funk')
-    emb_mapped = self.model.embed('disco funk', use_mapper=True, seed=0)
+    emb_plain = self.model.embed_text('disco funk')
+    emb_mapped = self.model.embed_text('disco funk', use_mapper=True, seed=0)
     self.assertFalse(np.array_equal(emb_plain, emb_mapped))
 
   def test_mapper_different_seeds(self):
     """Different seeds should produce different mapper embeddings."""
-    emb_s0 = self.model.embed('disco funk', use_mapper=True, seed=0)
-    emb_s1 = self.model.embed('disco funk', use_mapper=True, seed=1)
+    emb_s0 = self.model.embed_text('disco funk', use_mapper=True, seed=0)
+    emb_s1 = self.model.embed_text('disco funk', use_mapper=True, seed=1)
     self.assertFalse(np.array_equal(emb_s0, emb_s1))
 
   def test_mapper_tokenize_golden(self):
     """Mapper tokens should match golden reference values."""
     for prompt, expected in _GOLDEN_TOKENS_MAPPER.items():
       with self.subTest(prompt=prompt):
-        emb = self.model.embed(prompt, use_mapper=True, seed=0)
+        emb = self.model.embed_text(prompt, use_mapper=True, seed=0)
         tokens = self.model.tokenize(emb)
         self.assertEqual(tokens.tolist(), expected)
 
@@ -269,8 +247,8 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
   def test_audio_embedding_shape(self):
     """Audio embedding should produce a 768-dim float32 vector."""
     sr = self.model.config.sample_rate
-    waveform = audio.Waveform(np.random.randn(sr * 10).astype(np.float32), sr)
-    emb = self.model.embed(waveform)
+    waveform = AudioTree.create(np.random.randn(sr * 10).astype(np.float32), sr)
+    emb = self.model.embed_audio(waveform)[0]
     self.assertEqual(emb.shape, (768,))
     self.assertEqual(emb.dtype, np.float32)
     self.assertTrue(np.all(np.isfinite(emb)))
@@ -278,16 +256,16 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
   def test_audio_embedding_deterministic(self):
     """Same audio should always produce the same embedding."""
     sr = self.model.config.sample_rate
-    waveform = audio.Waveform(np.random.randn(sr * 10).astype(np.float32), sr)
-    emb1 = self.model.embed(waveform)
-    emb2 = self.model.embed(waveform)
+    waveform = AudioTree.create(np.random.randn(sr * 10).astype(np.float32), sr)
+    emb1 = self.model.embed_audio(waveform)[0]
+    emb2 = self.model.embed_audio(waveform)[0]
     np.testing.assert_array_equal(emb1, emb2)
 
   def test_audio_tokenize(self):
     """Audio → embed → tokenize should produce valid tokens."""
     sr = self.model.config.sample_rate
-    waveform = audio.Waveform(np.random.randn(sr * 10).astype(np.float32), sr)
-    emb = self.model.embed(waveform)
+    waveform = AudioTree.create(np.random.randn(sr * 10).astype(np.float32), sr)
+    emb = self.model.embed_audio(waveform)[0]
     tokens = self.model.tokenize(emb)
     self.assertEqual(tokens.shape, (12,))
     self.assertTrue(np.all(tokens >= 0))
@@ -297,8 +275,8 @@ class MusicCoCaTFLiteTest(unittest.TestCase):
 
   def test_embed_and_tokenize_pipeline(self):
     """Full pipeline: embed text → average → tokenize."""
-    emb1 = self.model.embed('jazz')
-    emb2 = self.model.embed('piano')
+    emb1 = self.model.embed_text('jazz')
+    emb2 = self.model.embed_text('piano')
     blended = np.mean([emb1, emb2], axis=0)
     tokens = self.model.tokenize(blended)
     self.assertEqual(tokens.shape, (12,))
