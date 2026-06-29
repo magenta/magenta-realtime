@@ -115,7 +115,7 @@ static BOOL isDevServerRunning(void) {
 - (void)loadView {
     NSView* view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 700, 505)];
     view.wantsLayer = YES;
-    view.layer.backgroundColor = [NSColor blackColor].CGColor;
+    view.layer.backgroundColor = [NSColor colorWithRed:0.125 green:0.129 blue:0.141 alpha:1.0].CGColor;
     self.view = view;
 }
 
@@ -221,6 +221,7 @@ static BOOL isDevServerRunning(void) {
             @"frameMs": @(m.transformer_ms),
             @"bufferAvail": @(m.buffer_available),
             @"bufferCap": @(m.buffer_capacity),
+            @"textEncoderStatus": @(engine->get_text_encoder_status()),
             @"droppedFrames": @(m.dropped_frames)
         };
     }

@@ -36,6 +36,8 @@ interface MidiSelectorProps {
   midiActive?: boolean;
   /** Extra sx passed through to MagentaDropdown's trigger button */
   buttonSx?: Record<string, any>;
+  /** Optional max width for the dropdown button label (default: '150px') */
+  maxDropdownWidth?: string | number;
 }
 
 /**
@@ -52,11 +54,22 @@ export function MidiSelector({
   showComputerKeyboard = true,
   midiActive = false,
   buttonSx,
+  maxDropdownWidth = '150px',
 }: MidiSelectorProps) {
   const connectedName = midiSources.find(s => s.connected)?.name;
-  const displayLabel = keyboardMidiEnabled
-    ? 'COMPUTER KEYBOARD'
-    : (connectedName ?? 'NONE');
+
+  const displayLabel = (
+    <span style={{
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: typeof maxDropdownWidth === 'number' ? `${maxDropdownWidth}px` : maxDropdownWidth,
+      display: 'inline-block',
+      verticalAlign: 'middle',
+    }}>
+      {keyboardMidiEnabled ? 'COMPUTER KEYBOARD' : (connectedName ?? 'NONE')}
+    </span>
+  );
 
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'baseline', gap: '4px' }}>

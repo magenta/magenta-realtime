@@ -137,7 +137,10 @@ export default function App() {
     rightLevel: 0,
     droppedFrames: 0,
     transportFlags: -1,
+    textEncoderStatusColors: [] as number[],
   });
+
+  const [localLoadingIndices, setLocalLoadingIndices] = useState<Set<number>>(new Set());
 
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -151,6 +154,7 @@ export default function App() {
   const [resourcesMissing, setResourcesMissing] = useState(false);
   const [resourcesProgress, setResourcesProgress] = useState<any>(null);
   const [isFetchingModels, setIsFetchingModels] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
 
   const [bankStatus, setBankStatus] = useState([false, false, false]);
@@ -165,9 +169,10 @@ export default function App() {
   const keyboardBaseNote = useRef(KEYBOARD_MIDI_BASE_DEFAULT);
   const pressedKeys = useRef<Map<string, number>>(new Map());
   const [octaveOffset, setOctaveOffset] = useState(0);
-  const [prompts, setPrompts] = useState<Array<{ text: string; weight: number; isAudio: boolean }>>(() => {
-    return SHUFFLED_SUGGESTIONS.slice(0, 2).map(text => ({ text, weight: 1.0, isAudio: false }));
+  const [prompts, setPrompts] = useState<Array<{ text: string; weight: number; isAudio: boolean; colorIndex: number }>>(() => {
+    return SHUFFLED_SUGGESTIONS.slice(0, 2).map((text, i) => ({ text, weight: 1.0, isAudio: false, colorIndex: i }));
   });
+  const nextColorIndex = useRef(2);
 
   const promptSurfaceRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 340, h: 275 });
@@ -208,8 +213,9 @@ export default function App() {
       x: pos.x * stageSize.w,
       y: (1.0 - pos.y) * stageSize.h,
       label: p.text,
-      colorIndex: i,
+      colorIndex: p.colorIndex,
       isAudio: p.isAudio,
+      loading: (metrics.textEncoderStatusColors?.[i] === 1) || localLoadingIndices.has(i),
     };
   });
 
@@ -256,15 +262,28 @@ export default function App() {
     if (prompts.length >= MAX_PROMPTS) return;
     const x_norm = x_pixel / stageSize.w;
     const y_norm = 1.0 - (y_pixel / stageSize.h);
-    setSurfacePositions(prev => [...prev, { x: x_norm, y: y_norm }]);
+
+    const randomIdx = Math.floor(Math.random() * ALL_SUGGESTIONS.length);
+    const suggestedText = ALL_SUGGESTIONS[randomIdx];
+
+    setSurfacePositions(prev => {
+      const next = [...prev];
+      next[prompts.length] = { x: x_norm, y: y_norm };
+      return next;
+    });
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text: "", weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text: suggestedText, weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
   };
 
   const handleNodeDeleted = (id: number) => {
+    setSurfacePositions(prev => {
+      const next = [...prev];
+      next.splice(id, 1);
+      return next;
+    });
     setPrompts(currentPrompts => {
       const next = [...currentPrompts];
       next.splice(id, 1);
@@ -334,6 +353,7 @@ export default function App() {
   };
 
   const handlePromptTextChange = (idx: number, text: string) => {
+    setLocalLoadingIndices(prev => new Set(prev).add(idx));
     setPrompts(currentPrompts => {
       const next = [...currentPrompts];
       next[idx] = { ...next[idx], text };
@@ -361,6 +381,7 @@ export default function App() {
   };
 
   const handlePromptUpload = (idx: number) => {
+    setLocalLoadingIndices(prev => new Set(prev).add(idx));
     // Tell native host to open file picker and load audio for this prompt index
     postMessage({ type: 'loadAudioPrompt', index: idx });
   };
@@ -382,7 +403,7 @@ export default function App() {
     const ry = 0.2 + Math.random() * 0.6;
     setSurfacePositions(prev => [...prev, { x: rx, y: ry }]);
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text, weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text, weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
@@ -394,7 +415,7 @@ export default function App() {
     // Add a placeholder entry, then trigger the upload for that new slot
     const nextIdx = prompts.length;
     setPrompts(currentPrompts => {
-      const next = [...currentPrompts, { text: '', weight: 1.0, isAudio: false }];
+      const next = [...currentPrompts, { text: '', weight: 1.0, isAudio: false, colorIndex: nextColorIndex.current++ }];
       postNormalizedPrompts(next);
       return next;
     });
@@ -425,6 +446,17 @@ export default function App() {
       }
       if (state.metrics) {
         setMetrics(m => ({ ...m, ...state.metrics }));
+        if (state.metrics.textEncoderStatusColors) {
+          const colors: number[] = state.metrics.textEncoderStatusColors;
+          setLocalLoadingIndices(prev => {
+            let changed = false;
+            const next = new Set(prev);
+            colors.forEach((status, idx) => {
+              if (status !== 1 && next.has(idx)) { next.delete(idx); changed = true; }
+            });
+            return changed ? next : prev;
+          });
+        }
       }
       if (state.audioLevels) {
         setMetrics(m => ({ ...m, leftLevel: state.audioLevels.left, rightLevel: state.audioLevels.right }));
@@ -452,7 +484,7 @@ export default function App() {
       if (state.textPrompts !== undefined) {
         // Filter to only active entries (non-empty text) — dynamic length array
         const active = state.textPrompts
-          .map((p: any) => ({ text: p.text || '', weight: p.weight || 0, isAudio: p.isAudio || false }))
+          .map((p: any) => ({ text: p.text || '', weight: p.weight || 0, isAudio: p.isAudio || false, colorIndex: nextColorIndex.current++ }))
           .filter((p: any) => p.text.length > 0);
         setPrompts(active);
       }
@@ -475,6 +507,7 @@ export default function App() {
         }
       }
       initialLoadDone.current = true;
+      setIsInitialized(true);
     };
 
     // Handle Cmd+A in text inputs (WebView doesn't handle this natively)
@@ -605,7 +638,21 @@ export default function App() {
       color: 'var(--color-fg)',
       overflow: 'hidden',
       position: 'relative',
+      backgroundColor: 'var(--color-bg)',
     }}>
+      {/* Fade overlay to transition from blank white page on first load */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#1a1a1d',
+        zIndex: 99999,
+        opacity: isInitialized ? 0 : 1,
+        pointerEvents: isInitialized ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease-in-out',
+      }} />
       {/* Tiny ghost bug button in absolute top-right corner of the window */}
       <Tooltip title={`Build: ${__COMMIT_HASH__}`} placement="bottom-end" arrow={false}>
         <div style={{
@@ -788,6 +835,10 @@ export default function App() {
                     audioLevel={0}
                     physicsEnabled={false}
                     active={mixMode === 'surface'}
+                    promptRadius={15}
+                    listenerRadius={15}
+                    labelFontSize={11}
+                    labelMaxWidth="150px"
                   />
                 </div>
 
@@ -803,10 +854,11 @@ export default function App() {
                     <PromptRow
                       key={idx}
                       text={p.text}
-                      color={ALL_COLORS[idx % ALL_COLORS.length]}
+                      color={ALL_COLORS[p.colorIndex % ALL_COLORS.length]}
                       weight={p.weight}
                       isEmpty={!p.text && !p.isAudio}
                       isAudio={p.isAudio}
+                      loading={activeNodes[idx]?.loading}
                       onTextChange={(newText) => handlePromptTextChange(idx, newText)}
                       onWeightChange={(newWeight) => handlePromptWeightChange(idx, newWeight)}
                       onRemove={() => handlePromptRemove(idx)}
@@ -833,7 +885,7 @@ export default function App() {
 
           {/* ── A: Prompt input bar ── */}
           {(() => {
-            if (prompts.length >= MAX_PROMPTS) return null;
+            const atMax = prompts.length >= MAX_PROMPTS;
             return (
               <div style={{
                 display: 'flex',
@@ -841,6 +893,8 @@ export default function App() {
                 gap: '10px',
                 padding: '10px 16px',
                 flexShrink: 0,
+                opacity: atMax ? 0.45 : 1,
+                pointerEvents: atMax ? 'none' : 'auto',
               }}>
                 {/* Input bar container */}
                 <div
@@ -854,8 +908,9 @@ export default function App() {
                 >
                   <input
                     type="text"
-                    placeholder="Type a prompt or upload a sample"
-                    value={newPromptText}
+                    placeholder={atMax ? `${MAX_PROMPTS} prompts maximum` : 'Type a prompt or upload a sample'}
+                    value={atMax ? '' : newPromptText}
+                    disabled={atMax}
                     onChange={(e) => setNewPromptText(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newPromptText.trim()) {
@@ -880,6 +935,7 @@ export default function App() {
                         }
                         setNewPromptText(SHUFFLED_SUGGESTIONS[deckIndexRef.current++]);
                       }}
+                      disabled={atMax}
                       sx={{
                         width: '36px',
                         height: '36px',
@@ -899,6 +955,7 @@ export default function App() {
                   <Tooltip title="Upload audio prompt" arrow placement="top">
                     <IconButton
                       onClick={handleUploadNewPrompt}
+                      disabled={atMax}
                       sx={{
                         width: '36px',
                         height: '36px',
@@ -925,7 +982,7 @@ export default function App() {
                       handleAddPromptWithText(newPromptText.trim());
                     }
                   }}
-                  disabled={!newPromptText.trim()}
+                  disabled={atMax || !newPromptText.trim()}
                   sx={{
                     width: 36,
                     height: 36,
@@ -1292,6 +1349,7 @@ export default function App() {
                 onSelectSource={(endpoint) => postMessage({ type: 'selectMidiSource', endpoint })}
                 showComputerKeyboard={true}
                 midiActive={activeNotes.length > 0}
+                maxDropdownWidth="280px"
               />
             )}
             {/* Octave rocker — QWERTY mode only, absolutely centered */}

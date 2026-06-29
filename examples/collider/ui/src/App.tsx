@@ -19,7 +19,7 @@ import { Turtle, Rabbit } from 'lucide-react';
 import IconButton from '@mui/material/IconButton';
 import TuneIcon from '@mui/icons-material/Tune';
 import Tooltip from '@mui/material/Tooltip';
-import { ModelSelector, SettingsPanel, TimingIndicator, AudioMeter, ResourceOnboardingModal, TransportControls, PromptSurface, calculateWeights, ALL_SUGGESTIONS, DEFAULT_TEMPERATURE, DEFAULT_TOPK, DEFAULT_CFG_MUSICCOCA, DEFAULT_CFG_DRUMS, DEFAULT_UNMASK_WIDTH, DEFAULT_BUFFER_SIZE, DEFAULT_VOLUME, COLLIDER_CFG_NOTES, COLLIDER_CFG_MUSICCOCA } from '@magenta-rt/common';
+import { ModelSelector, SettingsPanel, TimingIndicator, AudioMeter, ResourceOnboardingModal, TransportControls, PromptSurface, calculateWeights, ALL_SUGGESTIONS, DEFAULT_TEMPERATURE, DEFAULT_TOPK, DEFAULT_CFG_MUSICCOCA, DEFAULT_CFG_DRUMS, DEFAULT_UNMASK_WIDTH, COLLIDER_DEFAULT_BUFFER_SIZE, DEFAULT_VOLUME, COLLIDER_CFG_NOTES, COLLIDER_CFG_MUSICCOCA } from '@magenta-rt/common';
 import type { PromptNode, ListenerNode } from '@magenta-rt/common';
 
 
@@ -70,13 +70,14 @@ const sliderToSpeed = (t: number) => Math.pow(t, SPEED_CURVE_EXP) * DEFAULT_PHYS
 const speedToSlider = (s: number) => Math.pow(s / DEFAULT_PHYSICS_SPEED, 1 / SPEED_CURVE_EXP);
 
 /** Build an equilateral triangle of prompts centered in the canvas, with `pad` px above/below. */
-function buildInitialLayout(w: number, h: number, pad = 60) {
-  const cx = w / 2;
+function buildInitialLayout(rect: DOMRect, pad = 60) {
+  const cx = rect.left + rect.width / 2;
+  const h = rect.height;
   // For an equilateral triangle: top vertex at pad, bottom vertices at h-pad
   // top = cy - R = pad, bottom = cy + R/2 = h - pad
   // Solving: R = 2*(h - 2*pad)/3, cy = pad + R
   const r = (2 * (h - 2 * pad)) / 3;
-  const cy = pad + r;
+  const cy = rect.top + pad + r;
   // 3 vertices at -90°, 30°, 150° (top, bottom-right, bottom-left)
   const angles = [-Math.PI / 2, Math.PI / 6, (5 * Math.PI) / 6];
   const prompts: PromptNode[] = INITIAL_PROMPT_LABELS.map((label, i) => ({
@@ -112,10 +113,12 @@ function App() {
   const [resourcesMissing, setResourcesMissing] = useState(false);
   const [resourcesProgress, setResourcesProgress] = useState<any>(null);
   const [isFetchingModels, setIsFetchingModels] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
 
   // Metrics state
-  const [metrics, setMetrics] = useState({ frameMs: 0, bufferAvail: 0, bufferCap: 0, droppedFrames: 0 });
+  const [metrics, setMetrics] = useState({ frameMs: 0, bufferAvail: 0, bufferCap: 0, textEncoderStatus: 0, promptStatuses: [] as number[], droppedFrames: 0 });
+  const localLoadingPromptIds = useRef<Set<number>>(new Set());
 
   // Settings Drawer states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -126,22 +129,22 @@ function App() {
     cfgmusiccoca: COLLIDER_CFG_MUSICCOCA,
     cfgdrums: DEFAULT_CFG_DRUMS,
     unmaskwidth: DEFAULT_UNMASK_WIDTH,
-    buffersize: DEFAULT_BUFFER_SIZE,
+    buffersize: COLLIDER_DEFAULT_BUFFER_SIZE,
     volume: DEFAULT_VOLUME,
     drumless: false,
   });
 
-  // ─── Measure prompt surface and build initial layout ─────────────────
-  const promptSurfaceRef = useRef<HTMLDivElement>(null);
+  // ─── Measure collision boundary and build initial layout ─────────────────
+  const collisionBoundaryRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (layoutInitialized.current) return;
     // Defer to next frame so flex layout (header + bottom bar) has settled
     requestAnimationFrame(() => {
-      const el = promptSurfaceRef.current;
+      const el = collisionBoundaryRef.current;
       if (!el || layoutInitialized.current) return;
-      const { width, height } = el.getBoundingClientRect();
-      if (width > 0 && height > 0) {
-        const layout = buildInitialLayout(width, height);
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const layout = buildInitialLayout(rect);
         setPrompts(layout.prompts);
         setListener(layout.listener);
         layoutInitialized.current = true;
@@ -159,7 +162,7 @@ function App() {
     sendParamChange(4, COLLIDER_CFG_NOTES);        // cfgnotes (Collider default)
     sendParamChange(48, DEFAULT_CFG_DRUMS);        // cfgdrums
     sendParamChange(7, DEFAULT_UNMASK_WIDTH);      // unmaskwidth
-    sendParamChange(8, DEFAULT_BUFFER_SIZE);       // buffersize
+    sendParamChange(8, COLLIDER_DEFAULT_BUFFER_SIZE); // buffersize
     sendParamChange(39, 0);                        // drumless = false
   };
 
@@ -179,6 +182,7 @@ function App() {
   promptsRef.current = prompts;
   const listenerRef = useRef(listener);
   listenerRef.current = listener;
+  const lastSentTextsRef = useRef<string[]>([]);
 
   // ─── Bridge: send prompts + weights to native ──────────────────────
 
@@ -202,6 +206,16 @@ function App() {
         }
       });
     }
+    const currentTexts = data.map(d => d.text);
+    const textsChanged = lastSentTextsRef.current.length === 0 ||
+      currentTexts.some((t, idx) => t !== lastSentTextsRef.current[idx]);
+
+    if (lastSentTextsRef.current.length > 0 && textsChanged) {
+      waitingForEncoder.current = true;
+      startEncoderTimeout();
+    }
+    lastSentTextsRef.current = currentTexts;
+
     post({ type: 'textPrompts', value: data });
   }, []);
 
@@ -213,6 +227,19 @@ function App() {
   // TFLite quantizer with redundant invocations.
   const sendThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSendTimeRef = useRef(0);
+  const waitingForEncoder = useRef(false);
+  const encoderTimeoutRef = useRef<number | null>(null);
+
+  const startEncoderTimeout = () => {
+    if (encoderTimeoutRef.current) clearTimeout(encoderTimeoutRef.current);
+    encoderTimeoutRef.current = window.setTimeout(() => {
+      if (waitingForEncoder.current) {
+        waitingForEncoder.current = false;
+        setMetrics(m => ({ ...m }));
+      }
+      encoderTimeoutRef.current = null;
+    }, 2000);
+  };
 
   useEffect(() => {
     const THROTTLE_MS = 100; // ~10 Hz
@@ -280,7 +307,19 @@ function App() {
       }
 
       if (state.metrics !== undefined) {
-        setMetrics(m => ({ ...m, ...state.metrics }));
+        setMetrics(m => {
+          const next = { ...m, ...state.metrics };
+          if (next.textEncoderStatus === 1) {
+            waitingForEncoder.current = false;
+            if (encoderTimeoutRef.current) {
+              clearTimeout(encoderTimeoutRef.current);
+              encoderTimeoutRef.current = null;
+            }
+          } else if (next.textEncoderStatus === 2 || next.textEncoderStatus === 0) {
+            localLoadingPromptIds.current.clear();
+          }
+          return next;
+        });
       }
       if (state.params !== undefined) {
         setParamsState(p => {
@@ -305,22 +344,25 @@ function App() {
         setPrompts(prev => {
           const existing = prev.findIndex(p => p.isAudio);
           if (existing !== -1) {
+            localLoadingPromptIds.current.add(prev[existing].id);
             return prev.map((p, i) => i === existing ? { ...p, label: state.prompt } : p);
           }
-          const el = promptSurfaceRef.current;
-          const w = el ? el.getBoundingClientRect().width : 800;
-          const h = el ? el.getBoundingClientRect().height : 600;
+          const el = collisionBoundaryRef.current;
+          const rect = el ? el.getBoundingClientRect() : new DOMRect(0, 0, 800, 600);
           const pad = 60;
+          const newId = nextIdRef.current++;
+          localLoadingPromptIds.current.add(newId);
           return [...prev, {
-            id: nextIdRef.current++,
-            x: pad + Math.random() * (w - pad * 2),
-            y: pad + Math.random() * (h - pad * 2),
+            id: newId,
+            x: rect.left + pad + Math.random() * (rect.width - pad * 2),
+            y: rect.top + pad + Math.random() * (rect.height - pad * 2),
             label: state.prompt,
             colorIndex: nextColorRef.current++,
             isAudio: true,
           }];
         });
       }
+      setIsInitialized(true);
     };
 
     post({ type: 'uiReady' });
@@ -362,10 +404,12 @@ function App() {
       deckIndexRef.current = 0;
     }
     const label = SHUFFLED_SUGGESTIONS[deckIndexRef.current++];
+    localLoadingPromptIds.current.add(id);
     setPrompts(prev => [...prev, { id, x, y, label, colorIndex }]);
   }, []);
 
   const handleTextChange = useCallback((id: number, text: string) => {
+    localLoadingPromptIds.current.add(id);
     setPrompts(prev => prev.map(p => p.id === id ? { ...p, label: text } : p));
   }, []);
 
@@ -381,10 +425,52 @@ function App() {
 
   const handleFirstThrow = useCallback(() => setHasThrown(true), []);
 
+  // Encoder loading state — true when prompts are being encoded
+  const isEncoderLoading = metrics.textEncoderStatus === 1 || waitingForEncoder.current;
+
+  // Calculate per-prompt loading state
+  const promptsWithLoading = prompts.map(p => {
+    let engineIndex = -1;
+    const audioIdx = prompts.findIndex(x => x.isAudio);
+    if (audioIdx !== -1) {
+      if (p.isAudio) {
+        engineIndex = 0;
+      } else {
+        const nonAudioPromptsBefore = prompts.slice(0, prompts.indexOf(p)).filter(x => !x.isAudio);
+        engineIndex = 1 + nonAudioPromptsBefore.length;
+      }
+    } else {
+      engineIndex = prompts.indexOf(p);
+    }
+
+    const status = metrics.promptStatuses?.[engineIndex] ?? 0;
+    const isEngineLoading = status === 1;
+    const isLocalLoading = localLoadingPromptIds.current.has(p.id);
+    const isPromptLoading = isEngineLoading || (isLocalLoading && isEncoderLoading);
+
+    return {
+      ...p,
+      loading: isPromptLoading,
+    };
+  });
+
   // ─── Render ────────────────────────────────────────────────────────
 
   return (
-    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
+    <div style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)', position: 'relative' }}>
+      {/* Fade overlay to transition from blank white page on first load */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#202124',
+        zIndex: 99999,
+        opacity: isInitialized ? 0 : 1,
+        pointerEvents: isInitialized ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease-in-out',
+      }} />
       {/* Transport — top left */}
       <div style={{
         position: 'fixed',
@@ -452,29 +538,30 @@ function App() {
         <AudioMeter leftLevel={audioLevel} rightLevel={audioLevel} width="120px" height="14px" />
       </div> */}
 
+      <PromptSurface
+        collisionBoundaryRef={collisionBoundaryRef}
+        prompts={promptsWithLoading}
+        listener={listener}
+        selectedBallId={selectedBallId}
+        onPromptMove={handlePromptMove}
+        onListenerMove={handleListenerMove}
+        onBallSelect={handleBallSelect}
+        onPromptAdd={handlePromptAdd}
+        onPromptTextChange={handleTextChange}
+        onPromptDelete={handlePromptDelete}
+        physicsSpeed={physicsSpeed}
+        onFirstThrow={handleFirstThrow}
+        isPlaying={isPlaying}
+        audioLevel={audioLevel}
+        debug={debug}
+        collisions={collisionsEnabled}
+      />
+
       {/* Top spacer — keeps prompt surface below fixed header elements */}
       <div style={{ height: 'calc(var(--app-padding) + 56px + var(--app-padding))', flexShrink: 0 }} />
 
-      {/* PromptSurface */}
-      <div ref={promptSurfaceRef} style={{ flex: 1, position: 'relative' }}>
-        <PromptSurface
-          prompts={prompts}
-          listener={listener}
-          selectedBallId={selectedBallId}
-          onPromptMove={handlePromptMove}
-          onListenerMove={handleListenerMove}
-          onBallSelect={handleBallSelect}
-          onPromptAdd={handlePromptAdd}
-          onPromptTextChange={handleTextChange}
-          onPromptDelete={handlePromptDelete}
-          physicsSpeed={physicsSpeed}
-          onFirstThrow={handleFirstThrow}
-          isPlaying={isPlaying}
-          audioLevel={audioLevel}
-          debug={debug}
-          collisions={collisionsEnabled}
-        />
-      </div>
+      {/* Collision Boundary Placeholder */}
+      <div ref={collisionBoundaryRef} style={{ flex: 1, position: 'relative', visibility: 'hidden', pointerEvents: 'none' }} />
 
       {/* TimingIndicator — fixed bottom-left */}
       <div style={{
@@ -488,7 +575,7 @@ function App() {
       </div>
 
       {/* ── Bottom bar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: 'var(--app-padding)', flexShrink: 0, gap: '12px', position: 'relative', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', alignItems: 'center', padding: 'var(--app-padding)', flexShrink: 0, gap: '12px', position: 'relative', justifyContent: 'flex-end', pointerEvents: 'none' }}>
 
         {/* Upload Audio Prompt */}
         <Tooltip title="Upload audio prompt">
@@ -497,6 +584,7 @@ function App() {
             sx={{
               width: 40,
               height: 40,
+              pointerEvents: 'auto',
             }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>upload</span>
@@ -507,17 +595,18 @@ function App() {
         <Tooltip title="Add prompt">
           <IconButton
             onClick={() => {
-              const el = promptSurfaceRef.current;
+              const el = collisionBoundaryRef.current;
               if (!el) return;
-              const { width, height } = el.getBoundingClientRect();
+              const rect = el.getBoundingClientRect();
               const pad = 60;
-              const x = pad + Math.random() * (width - pad * 2);
-              const y = pad + Math.random() * (height - pad * 2);
+              const x = rect.left + pad + Math.random() * (rect.width - pad * 2);
+              const y = rect.top + pad + Math.random() * (rect.height - pad * 2);
               handlePromptAdd(x, y);
             }}
             sx={{
               width: 40,
               height: 40,
+              pointerEvents: 'auto',
             }}
           >
             <span className="material-icons" style={{ fontSize: '20px' }}>add</span>

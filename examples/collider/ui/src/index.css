@@ -6,39 +6,6 @@
   max-height: 50vh;
 }
 
-/* ─── Tooltip (data-tip) ──────────────────────────────────────────── */
-[data-tip] {
-  position: relative;
-}
-[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: #111;
-  color: #fff;
-  font-family: 'Google Sans Text', system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-[data-tip]:hover::after {
-  opacity: 1;
-  transition-delay: 500ms;
-}
-/* Right-anchored tooltip — prevents clipping off right edge */
-[data-tip-align="right"]::after {
-  left: auto;
-  right: 0;
-  transform: none;
-}
-
 body {
   font-family: system-ui, sans-serif;
   height: 100%;
@@ -47,6 +14,7 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  background-color: #202124;
 }
 * {
   user-select: none;
