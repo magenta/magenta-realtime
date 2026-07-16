@@ -120,14 +120,14 @@ echo "==========================================================================
 echo "Creating: MRT2 - Collider.zip..."
 verify_exists "$COLLIDER_APP" "MRT2 - Collider App"
 rm -f "$OUT_DIR/MRT2 - Collider.zip"
-(cd "$APP_DIR" && zip -ryq "$OUT_DIR/MRT2 - Collider.zip" "MRT2 - Collider.app")
+ditto -c -k --keepParent "$COLLIDER_APP" "$OUT_DIR/MRT2 - Collider.zip"
 echo "✓ Created MRT2 - Collider.zip"
 
 # --- 2. MRT2 - Jam.zip ---
 echo "Creating: MRT2 - Jam.zip..."
 verify_exists "$JAM_APP" "MRT2 - Jam App"
 rm -f "$OUT_DIR/MRT2 - Jam.zip"
-(cd "$APP_DIR" && zip -ryq "$OUT_DIR/MRT2 - Jam.zip" "MRT2 - Jam.app")
+ditto -c -k --keepParent "$JAM_APP" "$OUT_DIR/MRT2 - Jam.zip"
 echo "✓ Created MRT2 - Jam.zip"
 
 # --- 3. MRT2 (Plugin & App).zip ---
@@ -143,7 +143,7 @@ ditto "$AU_APP" "$STAGE_PLUGIN_APP/MRT2 (AU).app"
 cp "$REPO_ROOT/examples/mrt2/auv3/INSTALL.md" "$STAGE_PLUGIN_APP/INSTALL.md"
 
 rm -f "$OUT_DIR/MRT2 (Plugin & App).zip"
-(cd "$STAGE_PLUGIN_APP" && zip -ryq "$OUT_DIR/MRT2 (Plugin & App).zip" "MRT2.app" "MRT2 (AU).app" "INSTALL.md")
+ditto -c -k "$STAGE_PLUGIN_APP" "$OUT_DIR/MRT2 (Plugin & App).zip"
 echo "✓ Created MRT2 (Plugin & App).zip"
 
 # --- 4. MRT2 Bundle.zip ---
@@ -161,7 +161,7 @@ ditto "$AU_APP" "$STAGE_BUNDLE/AudioUnit/MRT2 (AU).app"
 cp "$REPO_ROOT/examples/mrt2/auv3/INSTALL.md" "$STAGE_BUNDLE/AudioUnit/INSTALL.md"
 
 rm -f "$OUT_DIR/MRT2 Bundle.zip"
-(cd "$STAGE_BUNDLE" && zip -ryq "$OUT_DIR/MRT2 Bundle.zip" "MRT2 - Jam.app" "MRT2 - Collider.app" "AudioUnit")
+ditto -c -k "$STAGE_BUNDLE" "$OUT_DIR/MRT2 Bundle.zip"
 echo "✓ Created MRT2 Bundle.zip"
 
 # --- 5. CreativeCodeExternals.zip ---
@@ -198,7 +198,7 @@ verify_exists "$REPO_ROOT/examples/max/INSTALL.md" "Max INSTALL.md"
 cp "$REPO_ROOT/examples/max/INSTALL.md" "$STAGE_EXTERNALS/INSTALL.md"
 
 rm -f "$OUT_DIR/CreativeCodeExternals.zip"
-(cd "$STAGE_DIR" && zip -ryq "$OUT_DIR/CreativeCodeExternals.zip" "CreativeCodeExternals")
+ditto -c -k --keepParent "$STAGE_EXTERNALS" "$OUT_DIR/CreativeCodeExternals.zip"
 echo "✓ Created CreativeCodeExternals.zip"
 
 # Clean up staging
