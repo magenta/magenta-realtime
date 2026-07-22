@@ -199,6 +199,16 @@ struct MLXEngine::Impl {
 
   // --- MusicCoCa async token state ---
   mutable std::mutex musiccoca_mutex_;
+  // Serializes the *actual* quantizer TFLite invocation. The quantizer
+  // interpreter is a single stateful graph and is NOT thread-safe: two
+  // concurrent `TfLiteInterpreterInvoke`s corrupt its tensor arena, after
+  // which its internal GATHER node reads a stale index and fails with
+  // "gather index out of bounds" on every subsequent call. `quantize_embedding`
+  // is reached from both the background fetch thread (flag-guarded only) and
+  // the control-thread reblend (mutex+flag-guarded); this dedicated lock makes
+  // concurrent invocation impossible regardless of the flag state. It is never
+  // taken on the render/inference thread (generate_frame uses cached tokens).
+  std::mutex quantizer_invoke_mutex_;
   std::atomic<bool> is_musiccoca_fetching_{false};
   std::atomic<int> text_encoder_status_{
       0}; // 0=idle 1=fetching 2=success 3=error
@@ -1317,7 +1327,14 @@ void MLXEngine::Impl::reset_state() {
       add_log(err);
     }
   }
-  is_musiccoca_fetching_ = false;
+  // NOTE: do NOT clear is_musiccoca_fetching_ here. reset_state() runs on the
+  // inference thread (via RealtimeRunner::trigger_reset / sn_reseed), which can
+  // fire while a background fetch is mid-encode. That flag is owned by the
+  // fetch thread's RAII guard and doubles as the reblend concurrency gate;
+  // clearing it out from under an in-flight fetch used to let a control-thread
+  // reblend invoke the quantizer concurrently with the fetch -> arena
+  // corruption -> "gather index out of bounds" (GATHER node) on every
+  // subsequent frame. Let the fetch's guard clear it when it actually finishes.
 
   // Check if we have active prompts still loaded
   bool has_active_prompts = false;
@@ -1970,6 +1987,10 @@ bool MLXEngine::Impl::quantize_embedding(const float *embedding,
                                          std::vector<int> &out_tokens) {
   if (!quantizer_interpreter_)
     return false;
+
+  // Hold the invoke lock across the whole input-write / invoke / output-read
+  // sequence so no other thread can touch the quantizer graph mid-flight.
+  std::lock_guard<std::mutex> invoke_lock(quantizer_invoke_mutex_);
 
   TfLiteTensor *q_input =
       TfLiteInterpreterGetInputTensor(quantizer_interpreter_, 0);
