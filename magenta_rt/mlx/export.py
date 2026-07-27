@@ -28,9 +28,7 @@ from .load_weights import load_weights, convert_to_bf16
 from magenta_rt import paths
 from magenta_rt.config import (
     DRUM_PIANOROLL,
-    INPUT_SPECTROSTREAM,
     MUSICCOCA,
-    MOSIC,
     PIANOROLL_WITH_ONSETS
 )
 
@@ -321,8 +319,6 @@ def main(
                             tokens = [-1] * cfg.rvq_truncation_level
                         elif cfg.key == PIANOROLL_WITH_ONSETS.key and mask_key == 'notes':
                             tokens = [-1] * cfg.rvq_truncation_level
-                        elif cfg.key == INPUT_SPECTROSTREAM.key and mask_key == 'audio':
-                            tokens = [-1] * cfg.rvq_truncation_level
                         # Otherwise use positive tokens
                         elif cfg.key == MUSICCOCA.key:
                             tokens = list(musiccoca_tokens)
@@ -421,8 +417,6 @@ def main(
                 tokens = [-1] * cfg.rvq_truncation_level
             elif cfg.key == PIANOROLL_WITH_ONSETS.key and mask_key == 'notes':
                 tokens = [-1] * cfg.rvq_truncation_level
-            elif cfg.key == INPUT_SPECTROSTREAM.key and mask_key == 'audio':
-                tokens = [-1] * cfg.rvq_truncation_level
             # Otherwise use positive tokens
             elif cfg.key == MUSICCOCA.key:
                 tokens = list(musiccoca)
@@ -442,19 +436,13 @@ def main(
     cfg_musiccoca_val = mx.array([cfg_musiccoca])
     cfg_notes_val = mx.array([cfg_notes])
     cfg_drums_val = mx.array([cfg_drums])
-    cfg_audio_val = mx.array([cfg_audio])
-    cfg_mosic_val = mx.array([cfg_mosic])
 
     constants = {
         "temperature": t_val,
         "top_k": k_val,
     }
     for key in cfg_keys:
-        scale_val = (
-            cfg_musiccoca_val if key == 'musiccoca' else
-            cfg_notes_val if key == 'notes' else
-            cfg_audio_val
-        )
+        scale_val = cfg_musiccoca_val if key == 'musiccoca' else cfg_notes_val
         constants[f"classifier_free_guidance_scale_{key}"] = scale_val
         constants[f"classifier_free_guidance_negative_{key}"] = negatives[key]
 
@@ -523,10 +511,6 @@ def main(
                 warmup_args.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 warmup_args.append(cfg_drums_val)
-            elif cfg.key == INPUT_SPECTROSTREAM.key:
-                warmup_args.append(cfg_audio_val)
-            elif cfg.key == MOSIC.key:
-                warmup_args.append(cfg_mosic_val)
         for key in cfg_keys:
             warmup_args.append(negatives[key].values)
         warmup_args.append(empty_forced_tokens)
@@ -556,10 +540,6 @@ def main(
                 args.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 args.append(cfg_drums_val)
-            elif cfg.key == INPUT_SPECTROSTREAM.key:
-                args.append(cfg_audio_val)
-            elif cfg.key == MOSIC.key:
-                args.append(cfg_mosic_val)
         for key in cfg_keys:
             args.append(negatives[key].values)
         args.append(empty_forced_tokens)
@@ -578,10 +558,6 @@ def main(
                 args2.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 args2.append(cfg_drums_val)
-            elif cfg.key == INPUT_SPECTROSTREAM.key:
-                args2.append(cfg_audio_val)
-            elif cfg.key == MOSIC.key:
-                args2.append(cfg_mosic_val)
         for key in cfg_keys:
             args2.append(negatives[key].values)
         args2.append(forced_tokens)

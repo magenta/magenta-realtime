@@ -19,11 +19,12 @@
 // inference steps to measure per-step latency.
 //
 // Build:
-//   cmake benchmark -B benchmark_build && cmake --build benchmark_build
+//   cmake core/src/benchmark -B benchmark_build && cmake --build
+//   benchmark_build
 //   --target benchmark_mlxfn -j10
 //
 // Run:
-//   ./benchmark_build/benchmark_mlxfn [model_dir] [num_steps]
+//   ./benchmark_build/benchmark_mlxfn [model_dir] [num_steps] [num_cfgs]
 
 #include <mlx/mlx.h>
 
@@ -183,7 +184,8 @@ static std::pair<mx::array, std::vector<mx::array>> run_step(
         &fn,
     const mx::array &cond, float temperature, int top_k, float cfg_musiccoca,
     float cfg_notes, float cfg_drums, const std::vector<mx::array> &neg_arrays,
-    const std::vector<mx::array> &state, int dynamic_rvq_depth) {
+    const std::vector<mx::array> &state, int dynamic_rvq_depth,
+    int num_cfgs) {
   std::vector<mx::array> args;
   args.push_back(cond);
   args.push_back(mx::array({temperature}));
@@ -191,7 +193,10 @@ static std::pair<mx::array, std::vector<mx::array>> run_step(
   args.push_back(mx::array({cfg_musiccoca}));
   args.push_back(mx::array({cfg_notes}));
   args.push_back(mx::array({cfg_drums}));
-  args.insert(args.end(), neg_arrays.begin(), neg_arrays.end());
+  // Only include negative conditioning arrays when CFGs are enabled.
+  for (int i = 0; i < num_cfgs && i < static_cast<int>(neg_arrays.size()); ++i) {
+    args.push_back(neg_arrays[i]);
+  }
   args.push_back(
       mx::zeros({1, 0, dynamic_rvq_depth}, mx::int32)); // forced_tokens
   args.insert(args.end(), state.begin(), state.end());
@@ -205,9 +210,10 @@ static std::pair<mx::array, std::vector<mx::array>> run_step(
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 int main(int argc, char *argv[]) {
-  // Parse arguments: benchmark_mlxfn [model_dir] [num_steps]
+  // Parse arguments: benchmark_mlxfn [model_dir] [num_steps] [num_cfgs]
   std::string model_dir = "resources";
   int num_steps = kDefaultNumSteps;
+  int num_cfgs = 2; // default: musiccoca + notes
 
   // Scan for positional args
   std::vector<std::string> positional;
@@ -219,6 +225,8 @@ int main(int argc, char *argv[]) {
     model_dir = positional[0];
   if (positional.size() >= 2)
     num_steps = std::atoi(positional[1].c_str());
+  if (positional.size() >= 3)
+    num_cfgs = std::atoi(positional[2].c_str());
 
   // Strip trailing slashes
   while (!model_dir.empty() && model_dir.back() == '/')
@@ -239,6 +247,7 @@ int main(int argc, char *argv[]) {
   printf("  Model:       %s\n", mlxfn_path.c_str());
   printf("  State:       %s\n", state_path.c_str());
   printf("  Num steps:   %d\n", num_steps);
+  printf("  Num CFGs:    %d\n", num_cfgs);
   printf("───────────────────────────────────────────────────────────────\n\n");
 
   // ── Load model ──────────────────────────────────────────────────────
@@ -268,7 +277,9 @@ int main(int argc, char *argv[]) {
       dynamic_rvq_depth = shape[2];
     }
   }
-  printf("       ✓ Deduced dynamic RVQ depth: %d\n\n", dynamic_rvq_depth);
+  printf("       ✓ Deduced dynamic RVQ depth: %d\n", dynamic_rvq_depth);
+
+  printf("       ✓ Using num_cfgs: %d\n\n", num_cfgs);
 
   // ── Build conditioning input ────────────────────────────────────────
   auto cond = make_cond_input();
@@ -280,7 +291,7 @@ int main(int argc, char *argv[]) {
     auto [diag_audio, diag_state] =
         run_step(compiled_fn, cond, kDefaultTemperature, kDefaultTopK,
                  kDefaultCfgMusicCoCa, kDefaultCfgNotes, kDefaultCfgDrums,
-                 neg_arrays, initial_state, dynamic_rvq_depth);
+                 neg_arrays, initial_state, dynamic_rvq_depth, num_cfgs);
     mx::eval(diag_audio);
 
     // Print shape and dtype
@@ -326,7 +337,7 @@ int main(int argc, char *argv[]) {
     auto [audio, new_state] =
         run_step(compiled_fn, cond, kDefaultTemperature, kDefaultTopK,
                  kDefaultCfgMusicCoCa, kDefaultCfgNotes, kDefaultCfgDrums,
-                 neg_arrays, state, dynamic_rvq_depth);
+                 neg_arrays, state, dynamic_rvq_depth, num_cfgs);
     mx::eval(audio);
     mx::eval(new_state);
     state = std::move(new_state);
@@ -353,7 +364,7 @@ int main(int argc, char *argv[]) {
     auto [audio, new_state] =
         run_step(compiled_fn, cond, kDefaultTemperature, kDefaultTopK,
                  kDefaultCfgMusicCoCa, kDefaultCfgNotes, kDefaultCfgDrums,
-                 neg_arrays, state, dynamic_rvq_depth);
+                 neg_arrays, state, dynamic_rvq_depth, num_cfgs);
     mx::eval(audio);
     mx::eval(new_state);
 

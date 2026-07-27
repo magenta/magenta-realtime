@@ -214,21 +214,3 @@ MUSICCOCA = TokensConfig(
     frame_rate=SPECTROSTREAM.frame_rate,
     embedding_size=768,
 )
-
-INPUT_SPECTROSTREAM: TokensConfig = TokensConfig(
-    key='input_soundstream_tokens',
-    codebook_size=1024,
-    rvq_levels=64,
-    rvq_truncation_level=8,
-    frame_rate=25,
-    dropout_prob=TOKEN_DROPOUT_PROB,
-)
-
-MOSIC = TokensConfig(
-    key='mosic_tokens',
-    codebook_size=5,
-    rvq_levels=1,
-    rvq_truncation_level=1,
-    frame_rate=25,
-    dropout_prob=TOKEN_DROPOUT_PROB,
-)

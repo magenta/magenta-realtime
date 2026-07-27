@@ -204,8 +204,7 @@ class MagentaRT2System:
       temperature: Sampling temperature.
       top_k: Top-k sampling threshold.
       cfg_scales: Classifier-free guidance scale for the different inputs.
-          Standard models need musiccoca, notes, and drums, while A2A models
-          need musiccoca, audio, and mosic.
+          Standard models need musiccoca, notes, and drums.
           Note: The CFG scales don't expand the inference batch but are used
           as additional conditioning tokens.
     """

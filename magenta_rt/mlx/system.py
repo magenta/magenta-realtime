@@ -33,8 +33,6 @@ from .. import musiccoca
 from .. import paths
 from ..config import (
     DRUM_PIANOROLL,
-    INPUT_SPECTROSTREAM,
-    MOSIC,
     MUSICCOCA,
     PIANOROLL_WITH_ONSETS,
 )
@@ -203,8 +201,7 @@ class MagentaRT2System:
       temperature: Sampling temperature.
       top_k: Top-k sampling threshold.
       cfg_scales: Classifier-free guidance scale for the different inputs.
-          Standard models need musiccoca, notes, and drums, while A2A models
-          need musiccoca, audio, and mosic.
+          Standard models need musiccoca, notes, and drums.
           Note: The CFG scales don't expand the inference batch but are used
           as additional conditioning tokens.
       bits: Quantization bit width (4 or 8). None means no quantization.
@@ -516,8 +513,7 @@ class MagentaRT2SystemMlxfn:
       temperature: Sampling temperature.
       top_k: Top-k sampling threshold.
       cfg_scales: Classifier-free guidance scale for the different inputs.
-          Standard models need musiccoca, notes, and drums, while A2A models
-          need musiccoca, audio, and mosic.
+          Standard models need musiccoca, notes, and drums.
       warmup_steps: Number of warmup inference steps.
     """
     model_name = size or paths.DEFAULT_MODEL_NAME

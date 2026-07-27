@@ -36,6 +36,12 @@ def main(
     checkpoint: str | None = None,
     duration: float = 4.0,
 ):
+    cfg_scales = {
+        'musiccoca': cfg_musiccoca,
+        'notes': cfg_notes,
+        'drums': 1.0,
+    }
+
     mrt = MagentaRT2Jax(
         size=model_name,
         checkpoint=checkpoint,
