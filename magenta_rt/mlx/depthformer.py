@@ -684,6 +684,10 @@ class MultivariateDecoder(sl.Emitting):
     # Note: forced_tokens is an MLX-specific feature to allow forcing tokens
     # during step-by-step generation, which is not present in JAX.
     if forced_tokens is not None and forced_tokens.shape[1] > 0:
+      # Broadcast forced_tokens to match batch size (e.g., if using CFG)
+      if forced_tokens.shape[0] != batch_size:
+        forced_tokens = mx.broadcast_to(forced_tokens, (batch_size,) + forced_tokens.shape[1:])
+      forced_tokens = forced_tokens.astype(mx.uint32)
       depth_samples = sl.Sequence.from_values(forced_tokens)
       state = (rng, depth_samples, temporal_state, step + 1)
       return depth_samples, state, None
