@@ -106,6 +106,7 @@ class TestPrefillCorrectness(unittest.TestCase):
             prev_token = prefill_seq[:, step:step+1, :]
             y, state = sampler.step(x=self.block, state=state, forced_tokens=prev_token, constants=self.constants)
             mx.eval(y.values, state)
+            npt.assert_array_equal(y.values, prev_token, err_msg=f"Output at step {step} does not match forced tokens")
 
         # Seed previous_frame with the last token without calling the model
         enc_state, prev_out, samp_state, delay = state
