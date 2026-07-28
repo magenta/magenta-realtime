@@ -387,9 +387,9 @@ def main(
     musiccoca = [660, 1016, 295, 206, 857, 841, 391, 857, 619, 70, 401, 22]
     musiccoca = musiccoca[:num_musiccoca_tokens]
 
-    cfg_keys = ['musiccoca', 'notes']
+    standard_cfg_keys = ['musiccoca', 'notes']
 
-    cfg_keys = cfg_keys[:num_cfgs]
+    cfg_keys = standard_cfg_keys[:num_cfgs]
 
     # Build positive conditioning sequence
     cond_list = []
@@ -429,7 +429,7 @@ def main(
             mx.array([[True]], dtype=mx.bool_),
         )
 
-    negatives = {key: make_negative(key) for key in cfg_keys}
+    negatives = {key: make_negative(key) for key in standard_cfg_keys}
 
     t_val = mx.array([temperature])
     k_val = mx.array([top_k], dtype=mx.int32)
@@ -464,7 +464,7 @@ def main(
         # behavior where each negative was a copy of the positive conditioning
         # with one modality masked.
         num_scales = sum(1 for cfg in exp.input_configs if 'cfg' not in cfg.key)
-        num_negs = len(cfg_keys)
+        num_negs = len(standard_cfg_keys)
 
         scales_args = list(flat_args[:num_scales])
         negs_args = list(flat_args[num_scales:num_scales + num_negs])
@@ -511,7 +511,7 @@ def main(
                 warmup_args.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 warmup_args.append(cfg_drums_val)
-        for key in cfg_keys:
+        for key in standard_cfg_keys:
             warmup_args.append(negatives[key].values)
         warmup_args.append(empty_forced_tokens)
         warmup_args.extend(flat_state)
@@ -540,7 +540,7 @@ def main(
                 args.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 args.append(cfg_drums_val)
-        for key in cfg_keys:
+        for key in standard_cfg_keys:
             args.append(negatives[key].values)
         args.append(empty_forced_tokens)
         args.extend(flat_state)
@@ -558,7 +558,7 @@ def main(
                 args2.append(cfg_notes_val)
             elif cfg.key == DRUM_PIANOROLL.key:
                 args2.append(cfg_drums_val)
-        for key in cfg_keys:
+        for key in standard_cfg_keys:
             args2.append(negatives[key].values)
         args2.append(forced_tokens)
         args2.extend(flat_state)

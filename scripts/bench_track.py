@@ -173,7 +173,7 @@ def main():
 
     # ── 3) Benchmark ──────────────────────────────────────────────────────
     print("━━━ [3/3] Benchmark ━━━")
-    bench_cmd = [BENCHMARK_BIN, model_dir, str(args.steps), str(DEFAULT_NUM_CFGS)]
+    bench_cmd = [BENCHMARK_BIN, model_dir, str(args.steps)]
     rc, output = run_cmd(bench_cmd, capture=True)
     if rc != 0:
         sys.exit(f"❌ Benchmark failed (exit {rc})")
