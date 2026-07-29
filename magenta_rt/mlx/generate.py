@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--model", default=paths.DEFAULT_MODEL_NAME, type=str,
                         help=f"Model variant name (default: {paths.DEFAULT_MODEL_NAME}).")
-    parser.add_argument("--bits", default=None, type=int, choices=[2, 3, 4, 5, 6, 8, 16, 32])
+    parser.add_argument("--bits", default=None, type=int, choices=[2, 3, 4, 5, 6, 8])
     parser.add_argument("--quantize-group-size", default=None, type=int,
         help="Only matters if `--bits` is set.")
     parser.add_argument("--prompt", default=None, type=str, help="Text conditioning for MusicCoCa.")

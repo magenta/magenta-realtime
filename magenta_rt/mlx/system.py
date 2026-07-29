@@ -340,12 +340,11 @@ class MagentaRT2System:
 
       # If it's CFG
       elif cfg.cfg_scale_keys:
-        step = 8.0 / (cfg.codebook_size - 1)
         tokens = []
         for scale_key in cfg.cfg_scale_keys:
           token = discretize_cfg(
             scales.get(scale_key, 3.0),
-            step,
+            cfg.step,
             cfg.codebook_size - 1
           )
           tokens.append(token)
