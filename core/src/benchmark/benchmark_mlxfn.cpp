@@ -19,7 +19,8 @@
 // inference steps to measure per-step latency.
 //
 // Build:
-//   cmake benchmark -B benchmark_build && cmake --build benchmark_build
+//   cmake core/src/benchmark -B benchmark_build && cmake --build
+//   benchmark_build
 //   --target benchmark_mlxfn -j10
 //
 // Run:

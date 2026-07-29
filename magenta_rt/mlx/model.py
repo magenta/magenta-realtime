@@ -257,7 +257,7 @@ class MagentaRT2ModelBase(metaclass=abc.ABCMeta):
 
     if self.use_pretrained_musiccoca_embedder:
       musiccoca_cfg = self.input_configs[0]
-      assert musiccoca_cfg.key == 'mulan_tokens_25hz', (
+      assert musiccoca_cfg.key == MUSICCOCA.key, (
           f'Expected first input config to be MusicCoca, got {musiccoca_cfg.key}'
       )
 

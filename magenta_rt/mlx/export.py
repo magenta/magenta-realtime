@@ -26,6 +26,11 @@ from . import model, system
 from . import spectrostream
 from .load_weights import load_weights, convert_to_bf16
 from magenta_rt import paths
+from magenta_rt.config import (
+    DRUM_PIANOROLL,
+    MUSICCOCA,
+    PIANOROLL_WITH_ONSETS
+)
 
 
 def _flatten_state(state):
@@ -166,9 +171,7 @@ def main(
     exp_cls = model.get_model_class(model_name)
     exp = exp_cls()
     musiccoca_tokens_cfg = exp.input_configs[0]
-    pianoroll_tokens_cfg = exp.input_configs[1]
     num_musiccoca_tokens = musiccoca_tokens_cfg.rvq_truncation_level
-    num_pitches = pianoroll_tokens_cfg.rvq_truncation_level
     print(f"Using model: {model_name} ({exp_cls.__name__})")
 
     # Build depthformer_config kwargs — only override what was explicitly set,
@@ -285,41 +288,64 @@ def main(
             # (at 25Hz), cycling through all 128 prompts once. This gives
             # ~384 activation samples per layer (128 steps × 3 CFG batch).
 
-            _notes = [-1] * num_pitches
-            _masked_musiccoca = [-1] * num_musiccoca_tokens
-            _masked_notes = [-1] * num_pitches
             _t_val = mx.array([temperature])
             _k_val = mx.array([top_k], dtype=mx.int32)
             _cfg_musiccoca_val = mx.array([cfg_musiccoca])
             _cfg_notes_val = mx.array([cfg_notes])
 
+            cfg_keys = ['musiccoca', 'notes']
+
+            cfg_keys = cfg_keys[:num_cfgs]
+
             def _make_cal_inputs(musiccoca_tokens):
                 """Build conditioning inputs for a single MusicCoCa prompt."""
-                cond = np.concatenate([musiccoca_tokens, _notes], axis=0) + NUM_RESERVED_TOKENS
+                c_list = []
+                for cfg in exp.input_configs:
+                    if cfg.key == MUSICCOCA.key:
+                        tokens = list(musiccoca_tokens)
+                    else:
+                        tokens = [-1] * cfg.rvq_truncation_level
+                    c_list.extend(tokens)
+                cond = np.array(c_list, dtype=np.int32) + NUM_RESERVED_TOKENS
                 block = sl.Sequence(
                     mx.array(cond.reshape(1, 1, -1), dtype=mx.int32),
                     mx.array([[True]], dtype=mx.bool_),
                 )
-                neg_musiccoca = sl.Sequence(
-                    mx.array([[_masked_musiccoca + _notes]], dtype=mx.int32) + NUM_RESERVED_TOKENS,
-                    mx.array([[True]], dtype=mx.bool_),
-                )
-                neg_notes = sl.Sequence(
-                    mx.array([[musiccoca_tokens + _masked_notes]], dtype=mx.int32) + NUM_RESERVED_TOKENS,
-                    mx.array([[True]], dtype=mx.bool_),
-                )
+
+                def _make_cal_neg(mask_key):
+                    neg_list = []
+                    for cfg in exp.input_configs:
+                        if cfg.key == MUSICCOCA.key and mask_key == 'musiccoca':
+                            tokens = [-1] * cfg.rvq_truncation_level
+                        elif cfg.key == PIANOROLL_WITH_ONSETS.key and mask_key == 'notes':
+                            tokens = [-1] * cfg.rvq_truncation_level
+                        # Otherwise use positive tokens
+                        elif cfg.key == MUSICCOCA.key:
+                            tokens = list(musiccoca_tokens)
+                        else:
+                            tokens = [-1] * cfg.rvq_truncation_level
+                        neg_list.extend(tokens)
+                    neg_tokens = np.array(neg_list, dtype=np.int32) + NUM_RESERVED_TOKENS
+                    return sl.Sequence(
+                        mx.array(neg_tokens.reshape(1, 1, -1), dtype=mx.int32),
+                        mx.array([[True]], dtype=mx.bool_),
+                    )
+
                 constants = {
                     "temperature": _t_val,
                     "top_k": _k_val,
-                    "classifier_free_guidance_scale_musiccoca": _cfg_musiccoca_val,
-                    "classifier_free_guidance_scale_notes": _cfg_notes_val,
-                    "classifier_free_guidance_negative_musiccoca": neg_musiccoca,
-                    "classifier_free_guidance_negative_notes": neg_notes,
                 }
+                for key in cfg_keys:
+                    scale_val = (
+                        _cfg_musiccoca_val if key == 'musiccoca' else
+                        _cfg_notes_val
+                    )
+                    constants[f"classifier_free_guidance_scale_{key}"] = scale_val
+                    constants[f"classifier_free_guidance_negative_{key}"] = _make_cal_neg(key)
                 return block, constants
 
             def _calibrate_fn(model_unused):
-                _input_spec = sl.ChannelSpec(shape=(num_musiccoca_tokens + num_pitches,), dtype=mx.int32)
+                _input_spec = sl.ChannelSpec(shape=(exp.input_num_channels,), dtype=mx.int32)
                 # Run multiple streaming steps per prompt before switching.
                 # State is continuous (no reset) — captures both within-prompt
                 # temporal evolution and prompt transition dynamics.
@@ -329,10 +355,10 @@ def main(
                     1, _input_spec, constants=first_constants, training=False)
                 for step_i in range(gptq_cal_steps):
                     prompt_idx = (step_i // steps_per_prompt) % len(musiccoca_prompts)
-                    cal_block, cal_constants = _make_cal_inputs(musiccoca_prompts[prompt_idx])
+                    block, constants = _make_cal_inputs(musiccoca_prompts[prompt_idx])
                     y, _state, _ = mrt_sampler.step_with_emits(
-                        x=cal_block, state=_state,
-                        constants=cal_constants, training=False)
+                        x=block, state=_state,
+                        constants=constants, training=False)
                     mx.eval(y.values)
                     if (step_i + 1) % 32 == 0:
                         print(f"    Calibration step {step_i + 1}/{gptq_cal_steps}")
@@ -357,25 +383,53 @@ def main(
         return mrt_sampler.get_initial_state(1, input_spec, constants=constants, training=False)
 
     # --- Set up conditioning inputs ---
+    # Drums: -1:"let model decide"; 0:"don't play drums"; 1:"please play drums"
     musiccoca = [660, 1016, 295, 206, 857, 841, 391, 857, 619, 70, 401, 22]
     musiccoca = musiccoca[:num_musiccoca_tokens]
-    notes = [-1] * num_pitches
-    drums = [-1]  # -1->"let model decide"; 0->"don't play drums"; 1->"please play drums"
-    masked_musiccoca = [-1] * num_musiccoca_tokens
-    masked_notes = [-1] * num_pitches
-    cond_tokens = np.concatenate([musiccoca, notes, drums], axis=0) + NUM_RESERVED_TOKENS
+
+    standard_cfg_keys = ['musiccoca', 'notes']
+
+    cfg_keys = standard_cfg_keys[:num_cfgs]
+
+    # Build positive conditioning sequence
+    cond_list = []
+    for cfg in exp.input_configs:
+        if 'cfg' in cfg.key:
+            continue
+        if cfg.key == MUSICCOCA.key:
+            tokens = list(musiccoca)
+        else:
+            tokens = [-1] * cfg.rvq_truncation_level
+        cond_list.extend(tokens)
+    cond_tokens = np.array(cond_list, dtype=np.int32) + NUM_RESERVED_TOKENS
     block = sl.Sequence(
         mx.array(cond_tokens.reshape(1, 1, -1), dtype=mx.int32),
         mx.array([[True]], dtype=mx.bool_),
     )
-    neg_musiccoca = sl.Sequence(
-        mx.array([[masked_musiccoca + notes + drums]], dtype=mx.int32) + NUM_RESERVED_TOKENS,
-        mx.array([[True]], dtype=mx.bool_),
-    )
-    neg_notes = sl.Sequence(
-        mx.array([[musiccoca + masked_notes + drums]], dtype=mx.int32) + NUM_RESERVED_TOKENS,
-        mx.array([[True]], dtype=mx.bool_),
-    )
+
+    # Build negative sequences
+    def make_negative(mask_key):
+        neg_list = []
+        for cfg in exp.input_configs:
+            if 'cfg' in cfg.key:
+                continue
+            if cfg.key == MUSICCOCA.key and mask_key == 'musiccoca':
+                tokens = [-1] * cfg.rvq_truncation_level
+            elif cfg.key == PIANOROLL_WITH_ONSETS.key and mask_key == 'notes':
+                tokens = [-1] * cfg.rvq_truncation_level
+            # Otherwise use positive tokens
+            elif cfg.key == MUSICCOCA.key:
+                tokens = list(musiccoca)
+            else:
+                tokens = [-1] * cfg.rvq_truncation_level
+            neg_list.extend(tokens)
+        neg_tokens = np.array(neg_list, dtype=np.int32) + NUM_RESERVED_TOKENS
+        return sl.Sequence(
+            mx.array(neg_tokens.reshape(1, 1, -1), dtype=mx.int32),
+            mx.array([[True]], dtype=mx.bool_),
+        )
+
+    negatives = {key: make_negative(key) for key in standard_cfg_keys}
 
     t_val = mx.array([temperature])
     k_val = mx.array([top_k], dtype=mx.int32)
@@ -383,81 +437,62 @@ def main(
     cfg_notes_val = mx.array([cfg_notes])
     cfg_drums_val = mx.array([cfg_drums])
 
-    if num_cfgs == 0:
-        # No CFG: batch = 1x (positive only, no guidance)
-        constants = {
-            "temperature": t_val,
-            "top_k": k_val,
-        }
-        print(f"Using 0 CFGs (disabled) → batch multiplier = 1x")
-    elif num_cfgs == 1:
-        # Only musiccoca CFG: batch = 2x (1 positive + 1 negative)
-        constants = {
-            "temperature": t_val,
-            "top_k": k_val,
-            "classifier_free_guidance_scale_musiccoca": cfg_musiccoca_val,
-            "classifier_free_guidance_negative_musiccoca": neg_musiccoca,
-        }
-        print(f"Using 1 CFG (musiccoca only) → batch multiplier = 2x")
-    else:
-        # All 2 CFGs: batch = 3x (1 positive + 2 negatives)
-        constants = {
-            "temperature": t_val,
-            "top_k": k_val,
-            "classifier_free_guidance_scale_musiccoca": cfg_musiccoca_val,
-            "classifier_free_guidance_scale_notes": cfg_notes_val,
-            "classifier_free_guidance_negative_musiccoca": neg_musiccoca,
-            "classifier_free_guidance_negative_notes": neg_notes,
-        }
-        print(f"Using 2 CFGs (musiccoca+notes) → batch multiplier = 3x")
+    constants = {
+        "temperature": t_val,
+        "top_k": k_val,
+    }
+    for key in cfg_keys:
+        scale_val = cfg_musiccoca_val if key == 'musiccoca' else cfg_notes_val
+        constants[f"classifier_free_guidance_scale_{key}"] = scale_val
+        constants[f"classifier_free_guidance_negative_{key}"] = negatives[key]
 
+    print(f"Using {len(cfg_keys)} CFGs ({', '.join(cfg_keys)}) → batch multiplier = {len(cfg_keys)+1}x")
+
+    has_cfg_tokens = any('cfg' in cfg.key for cfg in exp.input_configs)
     state = init_state(constants)
     flat_state, structure = _flatten_state(state)
 
     # todo: this mx.compile decorator isn't helping performance for some reason.
     # @partial(mx.compile, inputs=(mx.random.state, structure), outputs=mx.random.state)
-    def streaming_step(x_values, temperature_arg, top_k_arg, cfg_musiccoca_arg, cfg_notes_arg, cfg_drums_arg, neg_musiccoca_values, neg_notes_values, forced_tokens, *state_flat):
+    def streaming_step(x_values, temperature_arg, top_k_arg, *flat_args):
         # Discretize the float CFG scales and append them to the conditioning
-        # token slots (musiccoca, notes, drums). This replaces the
+        # token slots (musiccoca, notes, drums) if required by the model. This replaces the
         # discretize_cfg() logic that previously lived in
         # core/src/mlx_engine.cpp: the C++ runtime now passes raw float scales
         # and the exported function bins them. The same tokens are written into
         # the positive block and both CFG negative blocks, matching the old C++
         # behavior where each negative was a copy of the positive conditioning
         # with one modality masked.
-        cfg_tokens = mx.concatenate([
-            _discretize_cfg_token(cfg_musiccoca_arg, 0.2, 40, NUM_RESERVED_TOKENS),
-            _discretize_cfg_token(cfg_notes_arg, 0.2, 40, NUM_RESERVED_TOKENS),
-            _discretize_cfg_token(cfg_drums_arg, 1.0, 8, NUM_RESERVED_TOKENS),
-        ], axis=-1).reshape(1, 1, 3)
-        x_values = mx.concatenate([x_values, cfg_tokens], axis=-1)
-        neg_musiccoca_values = mx.concatenate([neg_musiccoca_values, cfg_tokens], axis=-1)
-        neg_notes_values = mx.concatenate([neg_notes_values, cfg_tokens], axis=-1)
+        num_scales = sum(1 for cfg in exp.input_configs if 'cfg' not in cfg.key)
+        num_negs = len(standard_cfg_keys)
+
+        scales_args = list(flat_args[:num_scales])
+        negs_args = list(flat_args[num_scales:num_scales + num_negs])
+        forced_tokens = flat_args[num_scales + num_negs]
+        state_flat = flat_args[num_scales + num_negs + 1:]
+
+        # todo: make number of CFG tokens configurable
+        if has_cfg_tokens:
+            cfg_tokens = mx.concatenate([
+                _discretize_cfg_token(scales_args[0], 0.2, 40, NUM_RESERVED_TOKENS),
+                _discretize_cfg_token(scales_args[1], 0.2, 40, NUM_RESERVED_TOKENS),
+                _discretize_cfg_token(scales_args[2], 1.0, 8, NUM_RESERVED_TOKENS),
+            ], axis=-1).reshape(1, 1, 3)
+            x_values = mx.concatenate([x_values, cfg_tokens], axis=-1)
+            negs_args = [
+                mx.concatenate([neg, cfg_tokens], axis=-1) for neg in negs_args
+            ]
 
         state = _unflatten_state(list(state_flat), structure)
         x = sl.Sequence(x_values, mx.array([[True]], dtype=mx.bool_))
 
-        if num_cfgs == 0:
-            dynamic_constants = {
-                "temperature": temperature_arg,
-                "top_k": top_k_arg,
-            }
-        elif num_cfgs == 1:
-            dynamic_constants = {
-                "temperature": temperature_arg,
-                "top_k": top_k_arg,
-                "classifier_free_guidance_scale_musiccoca": cfg_musiccoca_arg,
-                "classifier_free_guidance_negative_musiccoca": sl.Sequence(neg_musiccoca_values, mx.array([[True]], dtype=mx.bool_)),
-            }
-        else:
-            dynamic_constants = {
-                "temperature": temperature_arg,
-                "top_k": top_k_arg,
-                "classifier_free_guidance_scale_musiccoca": cfg_musiccoca_arg,
-                "classifier_free_guidance_scale_notes": cfg_notes_arg,
-                "classifier_free_guidance_negative_musiccoca": sl.Sequence(neg_musiccoca_values, mx.array([[True]], dtype=mx.bool_)),
-                "classifier_free_guidance_negative_notes": sl.Sequence(neg_notes_values, mx.array([[True]], dtype=mx.bool_)),
-            }
+        dynamic_constants = {
+            "temperature": temperature_arg,
+            "top_k": top_k_arg,
+        }
+        for i, key in enumerate(cfg_keys):
+            dynamic_constants[f"classifier_free_guidance_scale_{key}"] = scales_args[i]
+            dynamic_constants[f"classifier_free_guidance_negative_{key}"] = sl.Sequence(negs_args[i], mx.array([[True]], dtype=mx.bool_))
 
         y, new_state, _ = mrt_sampler.step_with_emits(x=x, state=state, constants=dynamic_constants, forced_tokens=forced_tokens, training=False)
         new_flat, _ = _flatten_state(new_state)
@@ -468,10 +503,20 @@ def main(
     empty_forced_tokens = mx.zeros((1, 0, rvq_truncation), dtype=mx.int32)
     print("warming up for export...")
     for _ in range(5):
-        y_values, *flat_state  = streaming_step(
-        block.values, t_val, k_val, cfg_musiccoca_val, cfg_notes_val, cfg_drums_val,
-        neg_musiccoca.values, neg_notes.values, empty_forced_tokens, *flat_state
-    )
+        warmup_args = [block.values, t_val, k_val]
+        for cfg in exp.input_configs:
+            if cfg.key == MUSICCOCA.key:
+                warmup_args.append(cfg_musiccoca_val)
+            elif cfg.key == PIANOROLL_WITH_ONSETS.key:
+                warmup_args.append(cfg_notes_val)
+            elif cfg.key == DRUM_PIANOROLL.key:
+                warmup_args.append(cfg_drums_val)
+        for key in standard_cfg_keys:
+            warmup_args.append(negatives[key].values)
+        warmup_args.append(empty_forced_tokens)
+        warmup_args.extend(flat_state)
+
+        y_values, *flat_state = streaming_step(*warmup_args)
         mx.eval(y_values, *flat_state)  # Force evaluation
     print("warmed up.")
 
@@ -486,32 +531,38 @@ def main(
     # todo: using shapeless=True could have performance cost, but
     # it would allow us to do parallel prefill over inputs with a dynamic time axis.
     with mx.exporter(mlxfn_path, streaming_step, shapeless=False) as exporter:
+        # Build export args list dynamically
+        args = [block.values, t_val, k_val]
+        for cfg in exp.input_configs:
+            if cfg.key == MUSICCOCA.key:
+                args.append(cfg_musiccoca_val)
+            elif cfg.key == PIANOROLL_WITH_ONSETS.key:
+                args.append(cfg_notes_val)
+            elif cfg.key == DRUM_PIANOROLL.key:
+                args.append(cfg_drums_val)
+        for key in standard_cfg_keys:
+            args.append(negatives[key].values)
+        args.append(empty_forced_tokens)
+        args.extend(flat_state)
 
-        exporter(
-            block.values,
-            t_val,
-            k_val,
-            cfg_musiccoca_val,
-            cfg_notes_val,
-            cfg_drums_val,
-            neg_musiccoca.values,
-            neg_notes.values,
-            empty_forced_tokens,
-            *flat_state,
-        )
+        exporter(*args)
         forced_tokens = mx.zeros((1, 1, rvq_truncation), dtype=mx.int32)
-        exporter(
-            block.values,
-            t_val,
-            k_val,
-            cfg_musiccoca_val,
-            cfg_notes_val,
-            cfg_drums_val,
-            neg_musiccoca.values,
-            neg_notes.values,
-            forced_tokens,
-            *flat_state,
-        )
+        
+        # Build step 2 args dynamically
+        # (re-uses values, state is modified so it doesn't matter)
+        args2 = [block.values, t_val, k_val]
+        for cfg in exp.input_configs:
+            if cfg.key == MUSICCOCA.key:
+                args2.append(cfg_musiccoca_val)
+            elif cfg.key == PIANOROLL_WITH_ONSETS.key:
+                args2.append(cfg_notes_val)
+            elif cfg.key == DRUM_PIANOROLL.key:
+                args2.append(cfg_drums_val)
+        for key in standard_cfg_keys:
+            args2.append(negatives[key].values)
+        args2.append(forced_tokens)
+        args2.extend(flat_state)
+        exporter(*args2)
 
     print(f'Exported transformer to {mlxfn_path}')
 

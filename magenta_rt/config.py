@@ -108,6 +108,7 @@ class TokensConfig:
 
   key: str = 'embeddings'
   codebook_size: int = -1
+  step: float | None = None # step used in the CFG discretization
   rvq_levels: int = -1
   rvq_truncation_level: int = -1
   quantizer: str | None = None
@@ -115,6 +116,7 @@ class TokensConfig:
   frame_rate: float = -1
   dropout_prob: float | None = None
   embedding_size: int = -1
+  cfg_scale_keys: list[str] | None = None # If the token represents a CFG value
 
   @property
   def dimension(self) -> int:
@@ -145,6 +147,13 @@ class TokensConfig:
 
 TOKEN_DROPOUT_PROB = 0.15
 
+# Notes conditioning (128 ints). Each slot represents the state of
+# the corresponding pitch (0-127). The state can be:
+#   -1: means the pitch is masked out.
+#    0: means the pitch is off.
+#    1: means the pitch is on, but it's not the first time.
+#    2: means the pitch is on for the first time (i.e., onset).
+#    3: means the pitch is on (model has freedom to play it as onset or continuation).
 PIANOROLL_WITH_ONSETS = TokensConfig(
     key='pianoroll_with_onsets_tokens',
     codebook_size=4,
@@ -154,6 +163,10 @@ PIANOROLL_WITH_ONSETS = TokensConfig(
     dropout_prob=TOKEN_DROPOUT_PROB,
 )
 
+# Drums conditioning (1 int).
+#   -1: means masked
+#    0: no drum
+#    1: play drum
 DRUM_PIANOROLL = TokensConfig(
     key='drum_pianoroll_tokens',
     codebook_size=2,
@@ -163,22 +176,28 @@ DRUM_PIANOROLL = TokensConfig(
     dropout_prob=TOKEN_DROPOUT_PROB,
 )
 
+# CFG scales. Values in range [-1.0, 7.0].
 CFG_CONDITIONING_MUSICCOCA_NOTES = TokensConfig(
     key='cfg_conditioning_tokens',
     codebook_size=41,
+    step=0.2,  # step used in the CFG discretization: CFG = -1.0 + step * CFG_codes
     rvq_levels=2,
     rvq_truncation_level=2,
     frame_rate=25,
     dropout_prob=None,
+    cfg_scale_keys=['musiccoca', 'notes']
 )
 
+# CFG scales. Values in range [-1.0, 7.0].
 CFG_CONDITIONING_DRUMS = TokensConfig(
     key='cfg_conditioning_drums_tokens',
     codebook_size=9,
+    step=1.0,  # step used in the CFG discretization: CFG = -1.0 + step * CFG_codes
     rvq_levels=1,
     rvq_truncation_level=1,
     frame_rate=25,
     dropout_prob=None,
+    cfg_scale_keys=['drums']
 )
 
 SPECTROSTREAM = TokensConfig(

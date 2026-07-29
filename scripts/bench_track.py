@@ -38,6 +38,7 @@ LOG_FILE = "outputs/bench_track/benchmark_log.jsonl"
 BENCHMARK_BIN = "./benchmark_build/benchmark_mlxfn"
 BENCH_DIR = "outputs/bench_track"
 MODEL_PREFIX = "mrt2_small"
+DEFAULT_NUM_CFGS = 0
 
 
 def git_sha():
@@ -143,7 +144,7 @@ def main():
             "mrt", "mlx", "export",
             f"--checkpoint={MODEL_PREFIX}.safetensors",
             f"--model={MODEL_PREFIX}",
-            "--num-cfgs=0",
+            f"--num-cfgs={DEFAULT_NUM_CFGS}",
             f"--bits={args.bits}",
             f"--output-name={output_name}",
             f"--output-dir={BENCH_DIR}",
