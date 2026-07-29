@@ -133,7 +133,7 @@ def _run_temporal_step(mrt_sampler, constants, block):
     captured = {}
     original_step = depthformer.MultivariateDecoder.step_with_emits
 
-    def _patched_step(self, x, state_inner, *, training=False, constants=None):
+    def _patched_step(self, x, state_inner, *, training=False, constants=None, **kwargs):
         rng, previous_frame, temporal_state, step = state_inner
         constants = constants or {}
         batch_size, _, _ = previous_frame.shape
@@ -155,7 +155,7 @@ def _run_temporal_step(mrt_sampler, constants, block):
         captured['batch_size'] = batch_size
         captured['training'] = training
 
-        return original_step(self, x, state_inner, training=training, constants=constants)
+        return original_step(self, x, state_inner, training=training, constants=constants, **kwargs)
 
     depthformer.MultivariateDecoder.step_with_emits = _patched_step
     try:
