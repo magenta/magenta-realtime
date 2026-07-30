@@ -19,7 +19,7 @@ from magenta_rt._vendor import _vendor_hook
 _vendor_hook.install()
 del _vendor_hook
 
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 __all__ = ["MagentaRT2Jax", "MagentaRT2Mlx", "MagentaRT2StdMlxfn"]
 
 
