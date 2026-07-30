@@ -57,6 +57,12 @@
   opacity: 1;
 }
 
+.prompt-loading-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dash-rotate 1s linear infinite;
+}
+
 
 .speed-slider-dock {
   display: flex;

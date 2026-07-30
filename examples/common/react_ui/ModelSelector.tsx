@@ -18,6 +18,7 @@ import MenuItem from '@mui/material/MenuItem';
 import IconButton from '@mui/material/IconButton';
 import { CloudDownload, Trash2, Check } from 'lucide-react';
 import { MagentaDropdown } from './MagentaDropdown';
+import { getModelSuffix } from './defaultParams';
 import './theme';
 
 interface ModelSelectorProps {
@@ -161,6 +162,11 @@ export function ModelSelector({
                 opacity: isLocal || isThisDownloading ? 1.0 : 0.6,
               }}>
                 {m.endsWith(".mlxfn") ? m.replace(".mlxfn", "") : m}
+                {getModelSuffix(m) && (
+                  <span style={{ fontSize: '11px', opacity: 0.5, marginLeft: '6px', fontWeight: 'normal' }}>
+                    {getModelSuffix(m)}
+                  </span>
+                )}
               </span>
 
               {/* Context Action Icon Block — fixed width so the panel doesn't shift */}

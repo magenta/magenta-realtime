@@ -94,8 +94,8 @@ notarize_cmake_target "notarize_mrt2_jam" "Jam App"
 notarize_cmake_target "notarize_mrt2_collider" "Collider App"
 
 # 2. Notarize the 3 Audio Externals manually
-notarize_manual_bundle "$HOME/Documents/Max 9/Library/mrt~.mxo" "MRT2_Max.zip" "Max MSP External" "true" "deploy_mrt2_max"
-notarize_manual_bundle "$HOME/Documents/Pd/externals/mrt~" "MRT2_Pd.zip" "Pure Data External" "false" "deploy_mrt2_pd"
+notarize_manual_bundle "$HOME/Documents/Max 9/Library/mrt2~.mxo" "MRT2_Max.zip" "Max MSP External" "true" "deploy_mrt2_max"
+notarize_manual_bundle "$HOME/Documents/Pd/externals/mrt2~" "MRT2_Pd.zip" "Pure Data External" "false" "deploy_mrt2_pd"
 notarize_manual_bundle "$HOME/Library/Application Support/SuperCollider/Extensions/MRT2" "MRT2_SuperCollider.zip" "SuperCollider UGen" "false" "deploy_mrt2_sc"
 
 echo ""

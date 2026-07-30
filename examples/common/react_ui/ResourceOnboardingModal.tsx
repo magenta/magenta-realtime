@@ -17,6 +17,7 @@ import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import FormControl from '@mui/material/FormControl';
 import { useState, useEffect } from 'react';
+import { getModelSuffix } from './defaultParams';
 
 const GREEN_ACCENT = '#5be8cc';
 const GREEN_HOVER = '#71fade';
@@ -199,12 +200,19 @@ export function ResourceOnboardingModal({
                     <MenuItem disabled value="">Fetching available models...</MenuItem>
                   )}
                   {remoteModels.map((m) => (
-                    <MenuItem key={m} value={m}>{m}</MenuItem>
+                    <MenuItem key={m} value={m}>
+                      {m}
+                      {getModelSuffix(m) && (
+                        <span style={{ fontSize: '11px', opacity: 0.5, marginLeft: '6px' }}>
+                          {getModelSuffix(m)}
+                        </span>
+                      )}
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </div>
-
+ 
             {/* Form Part 2: Destination Folder Row */}
             <div>
               <span className="panel-header" style={{

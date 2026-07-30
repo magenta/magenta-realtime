@@ -15,7 +15,7 @@
  */
 
 
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 
@@ -25,6 +25,7 @@ interface PromptRowProps {
   weight: number;
   isEmpty?: boolean;
   isAudio?: boolean;
+  loading?: boolean;
   onTextChange?: (text: string) => void;
   onWeightChange?: (weight: number) => void;
   onRemove?: () => void;
@@ -38,6 +39,7 @@ export function PromptRow({
   weight,
   isEmpty,
   isAudio,
+  loading,
   onTextChange,
   onWeightChange,
   onRemove,
@@ -45,6 +47,13 @@ export function PromptRow({
 }: PromptRowProps) {
   // Snapshot text on focus so we can revert on blur if empty
   const textOnFocusRef = useRef<string>('');
+  const [localText, setLocalText] = useState(isEmpty ? '' : text);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Sync local text when text prop changes
+  useEffect(() => {
+    setLocalText(isEmpty ? '' : text);
+  }, [text, isEmpty]);
 
   return (
     <div style={{
@@ -93,6 +102,8 @@ export function PromptRow({
             <Tooltip title="Remove audio prompt">
               <IconButton
                 onClick={onClearAudio}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
                 sx={{
                   width: '32px',
                   height: '32px',
@@ -107,7 +118,11 @@ export function PromptRow({
                   transition: 'all 0.2s ease-in-out',
                 }}
               >
-                <span className="material-icons" style={{ fontSize: '18px' }}>close</span>
+                {loading && !isHovered ? (
+                  <div className="magenta-spinner" style={{ width: '16px', height: '16px', border: '1.5px solid transparent', borderTopColor: 'currentColor', borderRightColor: 'currentColor' }} />
+                ) : (
+                  <span className="material-icons" style={{ fontSize: '18px' }}>close</span>
+                )}
               </IconButton>
             </Tooltip>
           </>
@@ -116,12 +131,21 @@ export function PromptRow({
           <>
             <input
               type="text"
-              value={isEmpty ? '' : text}
-              onChange={(e) => onTextChange?.(e.target.value)}
-              onFocus={() => { textOnFocusRef.current = text; }}
+              value={localText}
+              onChange={(e) => setLocalText(e.target.value)}
+              onFocus={() => { textOnFocusRef.current = localText; }}
               onBlur={(e) => {
-                if (!e.target.value.trim() && textOnFocusRef.current) {
+                const trimmed = e.target.value.trim();
+                if (!trimmed && textOnFocusRef.current) {
+                  setLocalText(textOnFocusRef.current);
                   onTextChange?.(textOnFocusRef.current);
+                } else if (trimmed !== textOnFocusRef.current) {
+                  onTextChange?.(trimmed);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
                 }
               }}
               placeholder="Add a prompt"
@@ -138,6 +162,8 @@ export function PromptRow({
             />
             <IconButton
               onClick={onRemove}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
               sx={{
                 width: '32px',
                 height: '32px',
@@ -152,7 +178,11 @@ export function PromptRow({
                 transition: 'all 0.2s ease-in-out',
               }}
             >
-              <span className="material-icons" style={{ fontSize: '18px' }}>close</span>
+              {loading && !isHovered ? (
+                <div className="magenta-spinner" style={{ width: '16px', height: '16px', border: '1.5px solid transparent', borderTopColor: 'currentColor', borderRightColor: 'currentColor' }} />
+              ) : (
+                <span className="material-icons" style={{ fontSize: '18px' }}>close</span>
+              )}
             </IconButton>
           </>
         )}

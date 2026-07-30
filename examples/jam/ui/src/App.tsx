@@ -38,7 +38,6 @@ import {
   Refresh,
   PlayArrow,
   Pause,
-  Save,
 } from '@mui/icons-material';
 
 // ─── WebKit bridge ───────────────────────────────────────────────────────────
@@ -97,6 +96,11 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeNotes, setActiveNotes] = useState<number[]>([]);
   const [noteActivityCounter, setNoteActivityCounter] = useState(0);
+  // Dynamic MIDI keyboard range — expands by octave when notes fall outside
+  const DEFAULT_MIDI_START = 48; // C3
+  const DEFAULT_MIDI_END = 72;   // C5
+  const [midiRangeStart, setMidiRangeStart] = useState(DEFAULT_MIDI_START);
+  const [midiRangeEnd, setMidiRangeEnd] = useState(DEFAULT_MIDI_END);
   const [localModels, setLocalModels] = useState<string[]>([]);
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
   const [downloadProgress, setDownloadProgress] = useState<any>(null);
@@ -105,6 +109,7 @@ function App() {
   const [resourcesMissing, setResourcesMissing] = useState(false);
   const [resourcesProgress, setResourcesProgress] = useState<any>(null);
   const [isFetchingModels, setIsFetchingModels] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
 
   // Settings Drawer states
@@ -130,6 +135,7 @@ function App() {
   const [isAudioPrompt, setIsAudioPrompt] = useState(false);
   const lastSentText = useRef('');
   const promptInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const promptBoxRef = useRef<HTMLDivElement | null>(null);
 
   // Color state
   const [activeColor, setActiveColor] = useState(() => ALL_COLORS[Math.floor(Math.random() * ALL_COLORS.length)]);
@@ -137,20 +143,6 @@ function App() {
   // Solo / Accompany state
   const [isSoloMode, setIsSoloMode] = useState(false);
   const lastSentSoloMode = useRef(false);
-
-  // ─── User preset overrides ───────────────────────────────────────────────
-  // Sparse overlay: only indices the user has explicitly saved get entries.
-  // `null` means "use factory default" (reserved for future reset support).
-  const [userPresetsSolo, setUserPresetsSolo] = useState<Record<number, string>>({});
-  const [userPresetsJam, setUserPresetsJam] = useState<Record<number, string>>({});
-
-  const getFactoryList = useCallback((solo: boolean): string[] => {
-    return solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
-  }, []);
-
-  const getUserOverrides = useCallback((solo: boolean): Record<number, string> => {
-    return solo ? userPresetsSolo : userPresetsJam;
-  }, [userPresetsSolo, userPresetsJam]);
 
   // ─── Prompt Rocker state ─────────────────────────────────────────────────
   const [rockerIndex, setRockerIndex] = useState(0);
@@ -165,12 +157,10 @@ function App() {
     }
   }, [rockerIndex]);
 
-  /** Returns the effective preset list: factory with user overrides applied. */
+  /** Returns the preset list. */
   const getActivePresetList = useCallback((solo: boolean) => {
-    const factory = getFactoryList(solo);
-    const overrides = getUserOverrides(solo);
-    return factory.map((text, i) => (i in overrides ? overrides[i] : text));
-  }, [getFactoryList, getUserOverrides]);
+    return solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
+  }, []);
 
   const applyPresetAtIndex = useCallback((list: string[], index: number) => {
     const preset = list[index];
@@ -203,28 +193,6 @@ function App() {
   const handleRockerRight = useCallback(() => navigatePreset(1), [navigatePreset]);
 
 
-  /** Persist the full user-overrides map to native side. */
-  const persistUserPresets = useCallback((solo: Record<number, string>, jam: Record<number, string>) => {
-    post({ type: 'saveUserPresets', solo, jam });
-  }, []);
-
-  /** Save the current prompt text as a user override for the active preset slot. */
-  const handleSavePreset = useCallback(() => {
-    const text = promptText.trim();
-    if (!text) return;
-    const setter = isSoloMode ? setUserPresetsSolo : setUserPresetsJam;
-    setter(prev => {
-      const next = { ...prev, [rockerIndex]: text };
-      // Persist both maps — grab the latest of the "other" map from current state
-      if (isSoloMode) {
-        persistUserPresets(next, userPresetsJam);
-      } else {
-        persistUserPresets(userPresetsSolo, next);
-      }
-      setIsPromptEdited(false);
-      return next;
-    });
-  }, [promptText, isSoloMode, rockerIndex, userPresetsSolo, userPresetsJam, persistUserPresets]);
 
   const handleModeChange = (solo: boolean) => {
     setIsSoloMode(solo);
@@ -232,18 +200,12 @@ function App() {
     sendParamChange(7, solo ? 127 : 0); // unmaskwidth
     setParamsState(p => ({ ...p, unmaskwidth: solo ? 127 : 0 }));
 
-    // Pick the first preset from the new mode's preset list (top to bottom)
     const list = getActivePresetList(solo);
-    if (list.length > 0) {
-      const preset = list[0];
-      setRockerIndex(0);
-      setPromptText(preset);
-      setActiveColor(getPromptColor(preset));
-      if (isAudioPrompt) post({ type: 'clearAudioPrompt' });
-      setIsAudioPrompt(false);
-      sendPrompt(preset, true, solo);
-    }
-    setIsPromptEdited(false);
+    const presetIdx = list.findIndex(p => p.toLowerCase() === promptText.toLowerCase());
+    setRockerIndex(presetIdx);
+    setIsPromptEdited(presetIdx === -1);
+
+    sendPrompt(promptText, true, solo);
   };
 
   // MIDI sources list state
@@ -406,6 +368,20 @@ function App() {
             }
             return prev;
           });
+
+          // Expand MIDI keyboard range by octaves if notes fall outside
+          for (const note of state.activeNotes) {
+            if (note < midiRangeStart) {
+              // Expand downward: snap to the octave boundary at or below the note
+              const newStart = Math.floor(note / 12) * 12;
+              setMidiRangeStart(prev => Math.min(prev, newStart));
+            }
+            if (note > midiRangeEnd) {
+              // Expand upward: snap to the octave boundary at or above the note
+              const newEnd = Math.ceil((note + 1) / 12) * 12;
+              setMidiRangeEnd(prev => Math.max(prev, newEnd));
+            }
+          }
         }
       }
 
@@ -438,12 +414,6 @@ function App() {
       }
 
 
-      // Restore user preset overrides from native if present
-      if (state.savedUserPresets !== undefined) {
-        if (state.savedUserPresets.solo) setUserPresetsSolo(state.savedUserPresets.solo);
-        if (state.savedUserPresets.jam) setUserPresetsJam(state.savedUserPresets.jam);
-      }
-
       if (state.prompt !== undefined && !promptInitialized.current) {
         // Use saved rocker index if available, otherwise try to find a match
         let presetIdx = -1;
@@ -451,14 +421,7 @@ function App() {
           presetIdx = state.savedRockerIndex;
         }
 
-        // Build effective preset list using user overrides that arrived in this same state update
-        const userSolo = state.savedUserPresets?.solo ?? {};
-        const userJam = state.savedUserPresets?.jam ?? {};
-        const factoryList = solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
-        const effectiveList = factoryList.map((text, i) => {
-          const overrides = solo ? userSolo : userJam;
-          return (i in overrides) ? overrides[i] : text;
-        });
+        const effectiveList = solo ? INSTRUMENT_SUGGESTIONS : PROMPT_SUGGESTIONS;
 
         let promptToUse = state.prompt;
 
@@ -526,17 +489,15 @@ function App() {
       if (state.solomode !== undefined) {
         setIsSoloMode(!!state.solomode);
       }
+      setIsInitialized(true);
     };
 
     post({ type: 'uiReady' });
     post({ type: 'listRemoteModels' });
 
-    // Auto-focus prompt text input on app mount and place caret at the end
-    if (promptInputRef.current) {
-      const el = promptInputRef.current;
-      el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
+    window.focus();
+    if (document.body) {
+      document.body.focus();
     }
 
     return () => {
@@ -544,6 +505,24 @@ function App() {
       if (encoderTimeoutRef.current) {
         clearTimeout(encoderTimeoutRef.current);
       }
+    };
+  }, []);
+
+  // Blur prompt text input when clicking outside of it
+  useEffect(() => {
+    const handleGlobalMouseDown = (e: MouseEvent) => {
+      if (
+        promptInputRef.current &&
+        document.activeElement === promptInputRef.current &&
+        promptBoxRef.current &&
+        !promptBoxRef.current.contains(e.target as Node)
+      ) {
+        promptInputRef.current.blur();
+      }
+    };
+    window.addEventListener('mousedown', handleGlobalMouseDown);
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalMouseDown);
     };
   }, []);
 
@@ -656,16 +635,13 @@ function App() {
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
-  const keyboardStartNote = keyboardMidiEnabled ? 60 : 48;
-  const keyboardEndNote = keyboardMidiEnabled ? 76 : 72;
+  const keyboardStartNote = keyboardMidiEnabled ? 60 : midiRangeStart;
+  const keyboardEndNote = keyboardMidiEnabled ? 76 : midiRangeEnd;
   const noModel = !modelName || modelName === 'No model loaded';
 
   // Current preset list for the rocker display
   const currentPresetList = getActivePresetList(isSoloMode);
 
-  // Determine if the user has modified the prompt relative to the saved preset
-  const savedPresetText = currentPresetList[rockerIndex] ?? '';
-  const promptIsDirty = isPromptEdited && promptText.trim() !== '' && promptText !== savedPresetText;
 
   // Tab style helper for the Solo/Jam switcher
   const modeTabStyle = (active: boolean): React.CSSProperties => ({
@@ -729,8 +705,22 @@ function App() {
         boxSizing: 'border-box',
         color: '#FFF',
         fontFamily: "'Google Sans Text', system-ui, sans-serif",
+        backgroundColor: '#000',
       }}
     >
+      {/* Fade overlay to transition from blank white page on first load */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#000',
+        zIndex: 99999,
+        opacity: isInitialized ? 0 : 1,
+        pointerEvents: isInitialized ? 'none' : 'auto',
+        transition: 'opacity 0.2s ease-in-out',
+      }} />
       {/* ══════════════════════════════════════════════════════════════════
           UPPER SECTION — colored background, contains rows 1 & 2, octave rocker
           ══════════════════════════════════════════════════════════════════ */}
@@ -852,6 +842,7 @@ function App() {
 
             {/* Prompt Box */}
             <div
+              ref={promptBoxRef}
               className="jam-box"
               onClick={(e) => {
                 if (e.target instanceof Element && e.target.closest('.upload-btn-container')) {
@@ -972,23 +963,7 @@ function App() {
                   alignItems: 'center',
                   gap: '4px',
                 }}>
-                {/* Save preset button — visible only when text prompt is modified (dirty) */}
-                {!isAudioPrompt && promptIsDirty && (
-                  <Tooltip title="Save preset" placement="top">
-                    <span>
-                      <IconButton
-                        variant="jam"
-                        onClick={handleSavePreset}
-                        sx={{
-                          width: 36,
-                          height: 36,
-                        }}
-                      >
-                        <Save sx={{ fontSize: 18, color: activeColor }} />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                )}
+
                 {isAudioPrompt ? (
                   <IconButton
                     variant="jam"

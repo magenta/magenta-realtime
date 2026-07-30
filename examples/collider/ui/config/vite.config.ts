@@ -23,6 +23,7 @@ export default defineConfig(() => ({
   },
   base: './',
   server: {
+    host: '127.0.0.1',
     port: 62419,
     fs: {
       allow: ['..'],
