@@ -368,7 +368,7 @@ class MusicCoCa(MusicCoCaBase):
         )
     )
     self._resource_dir = pathlib.Path(
-        resource_dir or paths.musiccoca_dir()
+        resource_dir or paths.resolve_musiccoca_dir()
     )
     if not lazy:
       self._vocab  # pylint: disable=pointless-statement

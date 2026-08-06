@@ -234,7 +234,7 @@ class MagentaRT2System:
         )
       checkpoint = _CHECKPOINT_REGISTRY[size]
 
-    checkpoint_path = paths.checkpoints_dir() / checkpoint
+    checkpoint_path = paths.resolve_checkpoint(checkpoint)
     logger.info('Loading checkpoint: %s', checkpoint_path)
     self._params = _load_jax_weights(checkpoint_path)
 

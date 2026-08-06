@@ -33,6 +33,15 @@ _MAGENTA_HOME = _MAGENTA_BASE / "magenta-rt-v2"
 DEFAULT_MODEL_NAME = "mrt2_base"
 DEFAULT_CHECKPOINT = "mrt2_base.safetensors"
 
+# HuggingFace repo that mirrors the MAGENTA_HOME layout (resources/, models/,
+# checkpoints/). Single source of truth, shared with the download CLI.
+HF_REPO_ID = "google/magenta-realtime-2"
+
+
+def _hf_token() -> "Union[str, None]":
+    """HuggingFace token from the environment, if set."""
+    return os.environ.get("HF_TOKEN")
+
 
 def magenta_home() -> pathlib.Path:
     """Returns the magenta home directory (default: ~/Documents/Magenta/magenta-rt-v2)."""
@@ -94,27 +103,128 @@ def checkpoints_dir() -> pathlib.Path:
 def resolve_checkpoint(filename: str) -> pathlib.Path:
     """Resolve a checkpoint file path.
 
-    First check if literal filepath exists; fallback to ~/Documents/Magenta/magenta-rt-v2/checkpoints/<filename>.
+    Resolution order:
+      1. ``filename`` as a literal filepath, if it exists.
+      2. ``<MAGENTA_HOME>/checkpoints/<filename>``, if it exists.
+      3. The same file reused from the global HuggingFace cache (no network
+         fetch — an already-populated cache from ``hf download`` or
+         ``mrt checkpoints download --use-hf-cache`` is picked up here).
 
     Args:
-        filename: Checkpoint filename ending in `.safetensors`
+        filename: Checkpoint filename ending in `.safetensors`, or a literal path.
 
     Returns:
-        Path to the checkpoint file (may not exist yet).
+        Path to the checkpoint file. Falls back to the MAGENTA_HOME path (which
+        may not exist yet) when the asset is neither local nor cached.
     """
     if os.path.isfile(filename):
-        return filename
-    return checkpoints_dir() / filename
+        return pathlib.Path(filename)
+    # NB: build the candidate path directly (do not call checkpoints_dir(), which
+    # mkdir's as a side effect) — resolution must not create dirs, so a cache hit
+    # leaves MAGENTA_HOME untouched.
+    local = _MAGENTA_HOME / "checkpoints" / filename
+    if local.exists():
+        return local
+    cached = _resolve_from_cache(f"checkpoints/{filename}", is_dir=False)
+    return cached if cached is not None else local
 
 # ---------------------------------------------------------------------------
-# Path resolution without fallbacks — everything in ~/Documents/Magenta/magenta-rt-v2)
+# Asset resolution — MAGENTA_HOME layout first, global HuggingFace cache fallback
 # ---------------------------------------------------------------------------
+#
+# Reads resolve through the global HF cache so an asset already fetched (e.g. via
+# `hf download google/magenta-realtime-2` or `mrt models download --use-hf-cache`)
+# is reused instead of re-downloaded. The MAGENTA_HOME layout always wins, so
+# local exports / GCS downloads / user overrides take precedence. Resolution is
+# cache-reuse only (no network fetch) unless `allow_download=True`.
+
+
+def _resolve_from_cache(
+    repo_relative: str, *, is_dir: bool, allow_download: bool = False
+) -> "Union[pathlib.Path, None]":
+    """Resolve a repo-relative asset from the global HF cache.
+
+    Returns the cached path, or None if it is not cached (and not downloaded).
+    """
+    import huggingface_hub  # lazy: keep paths.py import-light / offline-safe
+
+    try:
+        if is_dir:
+            root = huggingface_hub.snapshot_download(
+                repo_id=HF_REPO_ID,
+                allow_patterns=f"{repo_relative}/*",
+                token=_hf_token(),
+                local_files_only=not allow_download,
+            )
+            resolved = pathlib.Path(root) / repo_relative
+            return resolved if resolved.exists() else None
+        return pathlib.Path(
+            huggingface_hub.hf_hub_download(
+                repo_id=HF_REPO_ID,
+                filename=repo_relative,
+                token=_hf_token(),
+                local_files_only=not allow_download,
+            )
+        )
+    except Exception:
+        # Not in the cache (local_files_only) or unavailable from the hub.
+        return None
+
+
+def resolve_asset(
+    repo_relative: str, *, is_dir: bool = False, allow_download: bool = False
+) -> pathlib.Path:
+    """Resolve a model asset: MAGENTA_HOME layout first, else the HF cache.
+
+    Args:
+        repo_relative: Path mirroring the HF repo layout, e.g.
+            ``"resources/musiccoca"`` or ``"checkpoints/mrt2_base.safetensors"``.
+        is_dir: True to resolve a directory of files, False for a single file.
+        allow_download: If True, fetch from the hub when missing from the cache;
+            otherwise reuse the cache only (the default for load paths).
+
+    Returns:
+        An existing local path to the asset.
+
+    Raises:
+        FileNotFoundError: if the asset is neither under MAGENTA_HOME nor cached.
+    """
+    local = _MAGENTA_HOME / repo_relative
+    if local.exists():
+        return local
+    cached = _resolve_from_cache(
+        repo_relative, is_dir=is_dir, allow_download=allow_download
+    )
+    if cached is not None:
+        return cached
+    raise FileNotFoundError(
+        f"Could not find '{repo_relative}'. Looked in '{local}' and the global "
+        f"HuggingFace cache for repo '{HF_REPO_ID}'. Download it with "
+        f"`mrt models download` (add `--use-hf-cache` to populate the HF cache), "
+        f"or `hf download {HF_REPO_ID}`."
+    )
+
+
+def resolve_musiccoca_dir() -> pathlib.Path:
+    """MusicCoCa resource directory, resolved from MAGENTA_HOME or the HF cache."""
+    return resolve_asset("resources/musiccoca", is_dir=True)
+
+
+def resolve_spectrostream_dir() -> pathlib.Path:
+    """SpectroStream resource directory, resolved from MAGENTA_HOME or the HF cache."""
+    return resolve_asset("resources/spectrostream", is_dir=True)
+
+
+def resolve_model_dir(name: str) -> pathlib.Path:
+    """Exported `.mlxfn` model directory, resolved from MAGENTA_HOME or the HF cache."""
+    return resolve_asset(f"models/{name}", is_dir=True)
+
 
 def resolve_encoder_weights() -> pathlib.Path:
-    """Returns ~/Documents/Magenta/magenta-rt-v2/resources/spectrostream/encoder.safetensors."""
-    return spectrostream_dir() / "encoder.safetensors"
+    """SpectroStream encoder.safetensors, resolved from MAGENTA_HOME or the HF cache."""
+    return resolve_spectrostream_dir() / "encoder.safetensors"
 
 
 def resolve_decoder_weights() -> pathlib.Path:
-    """Returns ~/Documents/Magenta/magenta-rt-v2/resources/spectrostream/decoder.safetensors."""
-    return spectrostream_dir() / "decoder.safetensors"
+    """SpectroStream decoder.safetensors, resolved from MAGENTA_HOME or the HF cache."""
+    return resolve_spectrostream_dir() / "decoder.safetensors"
