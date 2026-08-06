@@ -19,6 +19,8 @@ This file contains the implementation of a Depthformer model, including a
 generating multivariate sequences, potentially using vector quantization.
 """
 
+from __future__ import annotations
+
 import dataclasses
 import fractions
 import logging
