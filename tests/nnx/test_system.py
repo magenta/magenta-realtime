@@ -128,20 +128,20 @@ def _make_system(jit: bool = False, seed: int = 0) -> MagentaRT2System:
 def test_generate_shapes_and_tokens(jit):
     sys = _make_system(jit=jit)
     frames = 3
-    wav, state = sys.generate(frames=frames)
+    audio, state = sys.generate(frames=frames)
 
     # Channel-major [N, C, T] audio.
-    assert wav.waveform.shape[0] == 1
-    assert wav.waveform.ndim == 3
-    assert wav.waveform.shape[-1] % frames == 0
-    assert wav.waveform.dtype == np.float32
-    assert np.all(np.isfinite(wav.waveform))
-    assert np.abs(wav.waveform).max() <= 1.0
+    assert audio.waveform.shape[0] == 1
+    assert audio.waveform.ndim == 3
+    assert audio.waveform.shape[-1] % frames == 0
+    assert audio.waveform.dtype == np.float32
+    assert np.all(np.isfinite(audio.waveform))
+    assert np.abs(audio.waveform).max() <= 1.0
 
     # Codes are the per-codebook RVQ indices that produced the audio.
-    assert wav.codes.shape == (1, frames, 4)
-    assert wav.codes.min() >= 0
-    assert wav.codes.max() < 8  # tiny codebook_size
+    assert audio.codes.shape == (1, frames, 4)
+    assert audio.codes.min() >= 0
+    assert audio.codes.max() < 8  # tiny codebook_size
 
     assert state.batch_size == 1
 
@@ -225,14 +225,14 @@ def test_batched_functional_generate():
     )
 
     # Shapes + batch size: waveform [N, 2, T], codes [N, frames, Q].
-    wav, state = sys.generate(style="x", frames=4)
-    assert wav.waveform.shape[0] == N
-    assert wav.waveform.ndim == 3
-    assert wav.codes.shape[0] == N
-    assert wav.codes.shape[1] == 4
+    audio, state = sys.generate(style="x", frames=4)
+    assert audio.waveform.shape[0] == N
+    assert audio.waveform.ndim == 3
+    assert audio.codes.shape[0] == N
+    assert audio.codes.shape[1] == 4
     assert state.batch_size == N
-    assert np.all(np.isfinite(wav.waveform))
-    assert np.abs(wav.waveform).max() <= 1.0
+    assert np.all(np.isfinite(audio.waveform))
+    assert np.abs(audio.waveform).max() <= 1.0
 
     # Continuation matches one-shot at N>1 (batched donation + threaded stream):
     # both start from state=None (same seed), so the codes are bit-identical.

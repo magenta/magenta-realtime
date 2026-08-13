@@ -18,8 +18,8 @@ Mirrors the ``magenta_rt.jax`` / ``magenta_rt.mlx`` system API::
 
     mrt = MagentaRT2System(size='mrt2_small')
     embedding = mrt.embed_style('disco funk')
-    audio_tree, state = mrt.generate(style=embedding, frames=25)
-    audio_tree, state = mrt.generate(style=embedding, frames=25, state=state)
+    audio, state = mrt.generate(style=embedding, frames=25)
+    audio, state = mrt.generate(style=embedding, frames=25, state=state)
 
 Like those systems, CFG uses the *trained conditioning tokens* (the ``cfgs``
 channels) with batch = N styles. The classifier-free-guidance logit-mixing
@@ -48,6 +48,7 @@ import numpy as np
 from einops import rearrange
 from flax import nnx
 
+from .checkpoint_utils import load_into_abstract
 from .model import MagentaRT2Sampler, get_model_class
 from audiotree import AudioTree
 
@@ -103,7 +104,7 @@ class MagentaRT2System:
 
         mrt = MagentaRT2System(size='mrt2_small')
         embedding = mrt.embed_style('disco funk')
-        audio_tree, state = mrt.generate(style=embedding, frames=25)
+        audio, state = mrt.generate(style=embedding, frames=25)
     """
 
     def __init__(
@@ -147,12 +148,12 @@ class MagentaRT2System:
         """
         self._spec = get_model_class(size)()
         self._size = size
-        if model is None:
-            model = MagentaRT2Sampler.from_preset(
+        def build() -> MagentaRT2Sampler:
+            return MagentaRT2Sampler.from_preset(
                 size, int16_outputs=False, rngs=nnx.Rngs(seed),
             )
-        self._model = model
 
+        checkpoint_path = None
         if restore:
             if checkpoint is None:
                 if size not in _CHECKPOINT_REGISTRY:
@@ -166,7 +167,21 @@ class MagentaRT2System:
             if not checkpoint_path.is_absolute():
                 checkpoint_path = paths.checkpoints_dir() / checkpoint_path
             logger.info('Loading checkpoint: %s', checkpoint_path)
-            self._model.load_checkpoint(checkpoint_path)
+
+        if model is None and checkpoint_path is not None:
+            # The checkpoint is about to overwrite every weight, so the random
+            # init is pure waste — for mrt2_small alone it costs 27s and 2.3 GB.
+            self._model = load_into_abstract(
+                build,
+                lambda m: m.load_checkpoint(checkpoint_path),
+                seed=seed,
+            )
+        else:
+            # Without a checkpoint the random init *is* the model, so it has to
+            # be built for real; a caller-supplied model is used as given.
+            self._model = build() if model is None else model
+            if checkpoint_path is not None:
+                self._model.load_checkpoint(checkpoint_path)
 
         # --- Sampling defaults ---
         self.temperature = temperature
@@ -241,6 +256,42 @@ class MagentaRT2System:
     def tokenize_style(self, embedding):
         """Tokenize a style embedding into RVQ tokens."""
         return self._style_model.tokenize(embedding)
+
+    # -------------------------------------------------------------------
+    # Adapters (LoRA / DoRA)
+    # -------------------------------------------------------------------
+
+    def apply_lora_adapters(self, adapters_path, *, strength: float = 1.0) -> dict:
+        """Merge a portable LoRA/DoRA adapter into the base depthformer.
+
+        Loads a self-describing adapter safetensors (its rank/alpha/DoRA/targets
+        recipe is read from the file metadata), injects the matching wrappers,
+        loads the stored weights at ``strength``, then folds them into the base
+        kernels so the streaming step runs a plain depthformer — numerically
+        identical to a fine-tuned checkpoint, with ``strength`` baked in.
+
+        Call this before the first :meth:`generate` (which arms the KV cache):
+        merging into plain ``Linear`` layers keeps the cache and the jitted step
+        free of adapter structure.
+
+        Args:
+          adapters_path: Path to the adapter safetensors (absolute, or relative
+              to the checkpoints directory per the loader's resolution).
+          strength: Blend toward the base (``1.0`` = full adapter, ``0.0`` =
+              base; ``0.6``-``0.8`` is often best for a strong adapter).
+
+        Returns:
+          The adapter recipe metadata (``rank`` / ``alpha`` / ``dora`` /
+          ``targets`` / ...), as read from the file.
+        """
+        from ..sft.lora_io import load_lora_adapters
+        from ..sft.lora_nnx import merge_lora_into_base
+
+        meta = load_lora_adapters(
+            self._model.depthformer, str(adapters_path), strength=strength,
+        )
+        merge_lora_into_base(self._model.depthformer)
+        return meta
 
     # -------------------------------------------------------------------
     # Generation

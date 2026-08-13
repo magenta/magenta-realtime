@@ -99,11 +99,11 @@ def main():
             embedding = mrt.embed_style(prompts[0], use_mapper=True)
 
         start_time = time.time()
-        audio_tree, _ = mrt.generate(style=embedding, frames=frames)
+        audio, _ = mrt.generate(style=embedding, frames=frames)
         elapsed = time.time() - start_time
         print(f"  Done in {elapsed:.1f}s ({frames/elapsed:.1f} steps/s)")
 
-        for j, item in enumerate(audio_tree):
+        for j, item in enumerate(audio):
             pid = prompt_ids[j]
             out_path = output_dir / f"{pid}.wav"
             item.write(str(out_path))

@@ -47,6 +47,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping
 
+import jax
 import jax.numpy as jnp
 import safetensors.flax as safetensors_flax
 from flax import nnx
@@ -56,13 +57,24 @@ import flax.traverse_util as flaxtu
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
+# These read a slot's shape/dtype before writing it, so they go through
+# ``get_value``/``set_value`` rather than the ``leaf[...]`` protocol: a model
+# built by ``nnx.eval_shape`` (see :mod:`magenta_rt.nnx.checkpoint_utils`) holds
+# ``jax.ShapeDtypeStruct`` placeholders, which carry shape and dtype but are not
+# subscriptable.
+def _target_spec(slot):
+    """Return the current value of ``slot`` — a real array or a placeholder."""
+    return slot.get_value()
+
+
 def _set_param(param: nnx.Param, value: jnp.ndarray) -> None:
-    """Assign ``value`` to a Variable slot using the nnx [...] protocol."""
-    if value.shape != param[...].shape:
+    """Assign ``value`` to a Variable slot, checking its shape first."""
+    target = _target_spec(param)
+    if value.shape != target.shape:
         raise ValueError(
-            f"shape mismatch: source {value.shape} vs target {param[...].shape}"
+            f"shape mismatch: source {value.shape} vs target {target.shape}"
         )
-    param[...] = value.astype(param[...].dtype)
+    param.set_value(jnp.asarray(value).astype(target.dtype))
 
 
 def _set_leaf(leaf, value) -> None:
@@ -73,7 +85,7 @@ def _set_leaf(leaf, value) -> None:
     a JAX ``FutureWarning`` ("cannot safely cast") that becomes a hard error in a
     future release. Casting up front keeps source and target dtypes matched.
     """
-    leaf[...] = jnp.asarray(value).astype(leaf[...].dtype)
+    leaf.set_value(jnp.asarray(value).astype(_target_spec(leaf).dtype))
 
 
 def _scatter_at(leaf, index: int, value) -> None:
@@ -82,9 +94,16 @@ def _scatter_at(leaf, index: int, value) -> None:
     Same dtype rationale as :func:`_set_leaf`: the value is cast to the leaf's
     dtype *before* the ``.at[index].set`` scatter to avoid the implicit-cast
     ``FutureWarning``.
+
+    A stacked leaf is filled one layer at a time, so unlike the helpers above it
+    needs somewhere to scatter *into*. Under an abstract build there is nothing
+    yet, so allocate the buffer on the first write — zeros, not random values,
+    because every layer of it is about to be overwritten from the checkpoint.
     """
-    cur = leaf[...]
-    leaf[...] = cur.at[index].set(jnp.asarray(value).astype(cur.dtype))
+    cur = _target_spec(leaf)
+    if isinstance(cur, jax.ShapeDtypeStruct):
+        cur = jnp.zeros(cur.shape, cur.dtype)
+    leaf.set_value(cur.at[index].set(jnp.asarray(value).astype(cur.dtype)))
 
 
 # ---------------------------------------------------------------------------

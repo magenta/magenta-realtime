@@ -281,6 +281,19 @@ class MagentaRT2Sampler(nnx.Module):
         from .load_weights import load_from_jax_safetensors
         load_from_jax_safetensors(self, checkpoint_path, host=host)
 
+    def materialize_constants(self) -> None:
+        """Rebuild the derived constants an abstract build cannot restore.
+
+        Part of the contract for loading into a model built with
+        ``nnx.eval_shape`` (see :mod:`magenta_rt.nnx.checkpoint_utils`): the
+        codec's STFT windows are computed from the frame geometry rather than
+        stored, and the decode counters are streaming state, so no checkpoint
+        carries either.
+        """
+        self.depthformer.decoder.materialize_constants()
+        if self.spectrostream is not None:
+            self.spectrostream.materialize_constants()
+
     def init_cache(self, *, batch: int = 1, dtype=jnp.float32) -> None:
         """Walks depthformer + spectrostream init_cache; prepares streaming."""
         self.depthformer.init_cache(batch=batch, dtype=dtype)

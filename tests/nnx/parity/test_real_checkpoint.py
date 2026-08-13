@@ -107,3 +107,41 @@ def test_codes_to_waveform_finite(bridged_system):
     # Channel-major [B, C, T] audio out of the codec.
     assert arr.ndim == 3 and arr.shape[0] == 1 and arr.shape[1] == 2
     assert np.isfinite(arr).all()
+
+
+def test_restoring_system_materializes_every_leaf():
+    """``MagentaRT2System`` builds its model with ``nnx.eval_shape`` when a
+    checkpoint will overwrite it, so nothing the constructor would have produced
+    starts out real. The checkpoint covers the parameters; the RNG state and the
+    codec's STFT windows have to be restored separately, and the windows are not
+    even abstract state leaves — ``STFT`` is a plain object, so nnx holds it
+    statically and the abstract build leaves a tracer that escaped its trace.
+    Any of those left behind fails only later, inside a jit.
+    """
+    if not CHECKPOINT.exists():
+        pytest.skip(f"checkpoint not found at {CHECKPOINT}")
+    import jax
+
+    from magenta_rt.nnx.signal import hann_window
+    from magenta_rt.nnx.system import MagentaRT2System
+
+    system = MagentaRT2System(size="mrt2_small", restore=True, seed=0)
+    model = system._model
+
+    abstract = [
+        jax.tree_util.keystr(path)
+        for path, leaf in jax.tree_util.tree_flatten_with_path(nnx.state(model))[0]
+        if isinstance(leaf, jax.ShapeDtypeStruct)
+    ]
+    assert not abstract, f"unmaterialized after load: {abstract}"
+
+    window = model.spectrostream.stft._stft._window
+    assert not isinstance(window, jax.core.Tracer)
+    np.testing.assert_array_equal(
+        np.asarray(window), np.asarray(hann_window(window.shape[0], dtype=np.float32))
+    )
+
+    # style=None takes the unconditioned path, so this needs no MusicCoCa
+    # embedder — the point here is that the loaded model runs at all.
+    audio, _ = system.generate(style=None, frames=2)
+    assert np.all(np.isfinite(np.asarray(audio.waveform)))

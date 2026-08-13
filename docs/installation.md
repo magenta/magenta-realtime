@@ -65,6 +65,27 @@ Assets are saved under `~/Documents/Magenta/magenta-rt-v2/`. See
 [Models & checkpoints](models.md) for the full directory layout, the available
 language-model checkpoints, and how to fetch raw safetensors for research.
 
+### Putting the assets somewhere else
+
+A full set of resources plus one language-model checkpoint is several
+gigabytes, which is more than some home directories have — and on machines
+where `~/Documents` is synced to iCloud or OneDrive, it is more than you want
+uploaded. Set `MAGENTA_HOME` to relocate everything:
+
+```bash
+export MAGENTA_HOME=/path/with/room
+mrt models init            # now writes to $MAGENTA_HOME/magenta-rt-v2/resources
+```
+
+Note the `magenta-rt-v2` component is appended for you, so the layout below
+sits under `$MAGENTA_HOME/magenta-rt-v2/` rather than directly under
+`$MAGENTA_HOME`. Set it before any `mrt` command — it is read once at import.
+In Python, `magenta_rt.paths.set_magenta_home(path)` does the same at runtime.
+
+Individual checkpoints do not have to live there at all: anything that takes a
+`--checkpoint` accepts an absolute path as well as a bare filename, and a
+literal path is tried before the shared directory.
+
 ## 4. Generate music
 
 Confirm everything works by generating a short clip. Use `mrt mlx` on Apple

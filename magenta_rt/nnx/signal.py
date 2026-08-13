@@ -152,7 +152,21 @@ class STFT:
         self.window_fn = window_fn or hann_window
         self.time_padding = time_padding
         self.output_magnitude = output_magnitude
-        self._window = jnp.asarray(self.window_fn(frame_length, dtype=np.float32))
+        self.materialize_window()
+
+    def materialize_window(self) -> None:
+        """(Re)compute the analysis window from ``frame_length``/``window_fn``.
+
+        The window is a derived constant, not a parameter, so a model built
+        with ``nnx.eval_shape`` has no way to restore it from a checkpoint.
+        This class is a plain object rather than an ``nnx.Module``, so under
+        that build the window is not even an abstract state leaf — it is a
+        tracer that escaped the trace, and using it raises. A loader that
+        builds abstractly must call this before the model is used.
+        """
+        self._window = jnp.asarray(
+            self.window_fn(self.frame_length, dtype=np.float32)
+        )
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         pad_left, pad_right = _padding(self.time_padding, self.frame_length, self.frame_step)
@@ -198,14 +212,22 @@ class InverseSTFT(nnx.Module):
         self.fft_length = fft_length
         self.window_fn = window_fn or hann_window
         self.time_padding = time_padding
-        # Synthesis window — applied verbatim, COLA correction is the
-        # caller's job (matches sl).
-        self._synth_window = jnp.asarray(
-            self.window_fn(frame_length, dtype=np.float32)
-        )
+        self.materialize_window()
         # Streaming state.
         self.streaming: bool = False
         self.cached_overlap: nnx.Cache | None = nnx.data(None)
+
+    def materialize_window(self) -> None:
+        """(Re)compute the synthesis window from ``frame_length``/``window_fn``.
+
+        Applied verbatim; COLA correction is the caller's job (matches sl).
+        Like :meth:`STFT.materialize_window`, this exists so a loader that
+        builds the model with ``nnx.eval_shape`` can restore a constant no
+        checkpoint carries.
+        """
+        self._synth_window = jnp.asarray(
+            self.window_fn(self.frame_length, dtype=np.float32)
+        )
 
     def init_cache(
         self,

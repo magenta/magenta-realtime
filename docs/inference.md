@@ -28,8 +28,8 @@ To print MusicCoCa tokens for a prompt directly without generating audio:
 
 # Get tokens from an audio file (returns a [1, 12] batched token list)
 >>> from audiotree import AudioTree
->>> wav = AudioTree.from_file("jazz_piano_trio.wav")
->>> emb_audio = m.embed_audio(wav)
+>>> audio = AudioTree.from_file("jazz_piano_trio.wav")
+>>> emb_audio = m.embed_audio(audio)
 >>> emb_audio.shape
 (1, 768)
 >>> m.tokenize(emb_audio).shape

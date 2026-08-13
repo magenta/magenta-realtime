@@ -27,7 +27,7 @@ prompt1 = style_model.embed_text('Foo')              # [embedding_dim]
 prompt2 = style_model.embed_text('Bar')
 tokens = style_model.tokenize(np.mean([prompt1, prompt2], axis=0))
 # Batches: embed_text(['Foo', 'Bar']) -> [2, dim];
-#          embed_audio(audio_tree)    -> [B, dim]  (AudioTree carries the batch)
+#          embed_audio(audio)    -> [B, dim]  (AudioTree carries the batch)
 ```
 """
 
@@ -222,6 +222,69 @@ class MusicCoCaBase(abc.ABC):
         return np.zeros((batch, self.config.embedding_dim), dtype=np.float32)
       return np.mean(embeddings, axis=1)
     return embeddings
+
+  def embed_audio_windows(
+      self,
+      audio: AudioTree,
+      *,
+      hop_seconds: float,
+      num_windows: int,
+      start_seconds: float = 0.0,
+      mono_strategy: str = 'average',
+      scan: bool = False,
+      window_subbatch: Optional[int] = None,
+      frame_rate: float = 25.0,
+  ) -> np.ndarray:
+    """A time series of style embeddings from LEADING ``clip_length`` windows.
+
+    Window ``i`` is the ``clip_length`` (10 s) clip STARTING at
+    ``start_seconds + snapped_time`` — the style of the audio from that point
+    forward. Unlike :meth:`embed_audio` (which pools windows to one vector), this
+    keeps the per-window series, the basis for *time-varying* style conditioning
+    (a different MusicCoCa embedding per generated frame). The audio must extend
+    at least ``clip_length`` past the last window start so every window is fully
+    supported (no zero-pad).
+
+    This backend-agnostic default re-embeds each distinct window via
+    :meth:`_embed_batch_clips`. Backends with a windowed encoder (e.g. the nnx
+    port) override this to compute the log-mel once and window it, and honor
+    ``scan`` (stream windows with bounded memory); here ``scan`` is ignored.
+
+    Args:
+      audio: ``AudioTree`` ``[B, C, T]`` (mixed to mono + resampled internally).
+      hop_seconds: Recompute interval in seconds.
+      num_windows: Number of target frames (e.g. one per target frame).
+      start_seconds: Time of the first window start.
+      mono_strategy: Mono mixdown strategy (see ``AudioTree.to_mono``).
+      scan: Backend hint for sequential/bounded-memory encoding (see above).
+      window_subbatch: Max windows per ``_embed_batch_clips`` call.
+      frame_rate: Frame rate of the target sequence (in Hz) we are aligning to.
+
+    Returns:
+      ``[B, num_windows, embedding_dim]``.
+    """
+    audio = audio.to_mono(strategy=mono_strategy).resample(self.config.sample_rate)
+    mono = np.asarray(audio.waveform)[:, 0, :]  # [B, S]
+    batch, total = mono.shape
+    clip = self.config.clip_length_samples
+    start0 = round(start_seconds * self.config.sample_rate)
+    # Snap starts onto the hop grid and dedup (a coarse hop reuses one window
+    # across the frames it spans) so identical windows are embedded once.
+    snapped_times = np.floor((np.arange(num_windows) / frame_rate) / hop_seconds) * hop_seconds
+    starts = start0 + np.round(snapped_times * self.config.sample_rate).astype(np.int64)
+    starts = np.minimum(starts, total - clip)
+    uniq, inverse = np.unique(starts, return_inverse=True)
+    windows = np.stack([mono[:, s:s + clip] for s in uniq], axis=1)  # [B, U, clip]
+    flat = windows.reshape(batch * len(uniq), clip)
+    step = window_subbatch or flat.shape[0]
+    chunks = [
+        np.asarray(self._embed_batch_clips(flat[i:i + step]))
+        for i in range(0, flat.shape[0], step)
+    ]
+    emb_u = np.concatenate(chunks, axis=0).reshape(
+        batch, len(uniq), self.config.embedding_dim
+    )
+    return emb_u[:, inverse, :]  # gather unique-window embeddings -> per window
 
   def __call__(self, text_or_audio: str | AudioTree, **kwargs):
     """Convenience dispatch for a single input: ``str`` -> :meth:`embed_text`,
@@ -490,15 +553,21 @@ class MockMusicCoCa(MusicCoCaBase):
           f'Embedding dimension must be {self.config.embedding_dim}, got'
           f' {embeddings.shape[-1]}.'
       )
-    seed = int(
-        hashlib.sha256(embeddings.tobytes()).hexdigest(), 16
-    ) % 2**32
-    np.random.seed(seed)
-    return np.random.randint(
-        0,
-        self.config.rvq_codebook_size,
-        size=embeddings.shape[:-1] + (self.config.rvq_depth,),
-        dtype=np.int32,
+    # Seed per embedding row, not once for the whole array: a real quantizer is
+    # a deterministic function of each embedding, so two identical embeddings
+    # must tokenize identically. Time-varying style conditioning relies on that
+    # (a coarse hop reuses one window's embedding across the frames it spans).
+    # Uses a local RandomState so the global numpy seed is left alone.
+    flat = embeddings.reshape(-1, self.config.embedding_dim)
+    tokens_list = []
+    for emb in flat:
+      seed = int(hashlib.sha256(emb.tobytes()).hexdigest(), 16) % 2**32
+      rng = np.random.RandomState(seed)
+      tokens_list.append(
+          rng.randint(0, self.config.rvq_codebook_size, size=self.config.rvq_depth)
+      )
+    return np.array(tokens_list, dtype=np.int32).reshape(
+        embeddings.shape[:-1] + (self.config.rvq_depth,)
     )
 
   def _embed_batch_text(

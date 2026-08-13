@@ -192,7 +192,7 @@ class MagentaRT2System:
 
       mrt = MagentaRT2System(size='mrt2_base')
       embedding = mrt.embed_style('disco funk')
-      audio_tree, state = mrt.generate(style=embedding, frames=25)
+      audio, state = mrt.generate(style=embedding, frames=25)
   """
 
   def __init__(
@@ -629,7 +629,7 @@ class MagentaRT2SystemMlxfn:
 
       mrt = MagentaRT2SystemMlxfn(size='mrt2_base')
       embedding = mrt.embed_style('disco funk')
-      audio_tree, state = mrt.generate(style=embedding, frames=25)
+      audio, state = mrt.generate(style=embedding, frames=25)
   """
 
   # The exported mlxfn uses NUM_RESERVED_TOKENS + 1 (dropout token) as offset.

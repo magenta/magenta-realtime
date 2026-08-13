@@ -28,7 +28,10 @@ The table below shows which devices support **real-time streaming** (generating 
 
 ## Download models
 
-Use the `mrt models` CLI to fetch models (automatically saved in `~/Documents/Magenta/magenta-rt-v2/`)
+Use the `mrt models` CLI to fetch models (automatically saved in
+`~/Documents/Magenta/magenta-rt-v2/`, or under `$MAGENTA_HOME/magenta-rt-v2/`
+when that environment variable is set — see
+[Putting the assets somewhere else](installation.md#putting-the-assets-somewhere-else))
 
 ```bash
 # Download resource models:

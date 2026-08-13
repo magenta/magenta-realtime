@@ -172,9 +172,9 @@ class DepthformerDecoder(nnx.Module):
         else:
             self.dropout_rng = None
 
-        self.step_counter = DecodeState(jnp.array(0, dtype=jnp.int32))
-        self.previous_frame = DecodeState(nnx.data(None))
-        self.rng_state = DecodeState(nnx.data(None))  # `init_streaming` will set this to nnx.Rngs
+        self.materialize_constants()
+        self.previous_frame = DecodeState(None)
+        self.rng_state = DecodeState(None)  # `init_streaming` will set this to nnx.Rngs
 
         if embedder is None:
             raise ValueError("embedder is required")
@@ -202,6 +202,16 @@ class DepthformerDecoder(nnx.Module):
         self.depth = depth
         self.final_ln = final_ln
         self.to_logits = to_logits
+
+    def materialize_constants(self) -> None:
+        """Reset the decode step counter to its freshly-constructed value.
+
+        No checkpoint carries it, so a model built with ``nnx.eval_shape`` has
+        it abstract until ``init_streaming`` runs. Resetting it at load time
+        keeps the model self-contained in between — see
+        :mod:`magenta_rt.nnx.checkpoint_utils`.
+        """
+        self.step_counter = DecodeState(jnp.array(0, dtype=jnp.int32))
 
     def init_cache(self, *, batch: int, dtype=jnp.float32) -> None:
         """Allocate temporal-transformer KV caches AND depth-transformer

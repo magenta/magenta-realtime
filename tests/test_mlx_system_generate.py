@@ -55,25 +55,25 @@ def test_generate_populates_tokens(mrt, dims):
     ns, nn, nd, _ = dims
     emb = mrt.embed_styles(["disco funk"])
     mx.random.seed(0)
-    wav, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
+    audio, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
                           cfgs=[20, 20, 4], frames=4)
-    assert wav.codes is not None
-    assert wav.codes.shape == (1, 4, 12)
-    assert np.issubdtype(wav.codes.dtype, np.integer)
-    assert wav.codes.min() >= 0 and wav.codes.max() < mrt._codebook_size
-    assert len(np.unique(wav.codes)) > 1  # not degenerate
+    assert audio.codes is not None
+    assert audio.codes.shape == (1, 4, 12)
+    assert np.issubdtype(audio.codes.dtype, np.integer)
+    assert audio.codes.min() >= 0 and audio.codes.max() < mrt._codebook_size
+    assert len(np.unique(audio.codes)) > 1  # not degenerate
 
 
 def test_generate_token_batch_axis_and_indexing(mrt, dims):
     ns, nn, nd, _ = dims
     emb = mrt.embed_styles(["disco funk", "smooth jazz"])
     mx.random.seed(0)
-    wav, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
+    audio, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
                           cfgs=[20, 20, 4], frames=4)
-    assert wav.codes.shape == (2, 4, 12)
-    assert wav.waveform.shape[0] == wav.codes.shape[0] == 2
+    assert audio.codes.shape == (2, 4, 12)
+    assert audio.waveform.shape[0] == audio.codes.shape[0] == 2
     # __getitem__ keeps the leading batch axis on tokens (rank-aligned w/ waveform)
-    item = wav[0]
+    item = audio[0]
     assert item.codes.shape == (1, 4, 12)
     assert item.waveform.shape[0] == 1
 
@@ -128,6 +128,6 @@ def test_generate_per_element_cfgs_runs(mrt, dims):
     ns, nn, nd, _ = dims
     emb = mrt.embed_styles(["disco funk", "smooth jazz"])
     mx.random.seed(0)
-    wav, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
+    audio, _ = mrt.generate(style=emb, notes=[-1] * nn, drums=[-1] * nd,
                           cfgs=[[20, 20, 4], [10, 10, 2]], frames=4)
-    assert wav.codes.shape == (2, 4, 12)
+    assert audio.codes.shape == (2, 4, 12)

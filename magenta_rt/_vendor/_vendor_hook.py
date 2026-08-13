@@ -24,8 +24,11 @@ Vendored here:
 
 - ``sequence_layers`` (``sequence-layers/sequence_layers/``) — the
   SequenceLayers library the jax/mlx backends are built on.
-- ``audiotree`` (``audiotree/audiotree/``) — a *minimal* copy of the
-  ``AudioTree`` pytree container (https://github.com/DBraun/audiotree).
+
+``audiotree`` is **not** vendored. The bundled copy was a minimal ``AudioTree``
+pytree that lacked the ``sources`` / excerpt-selection / loudness functionality
+``magenta_rt.sft`` needs, so the full package is a regular dependency
+(``audiotree>=1.0.0``, https://github.com/DBraun/audiotree).
 """
 
 import importlib.util
@@ -33,10 +36,7 @@ import sys
 from pathlib import Path
 
 # (importable module name, directory under _vendor/ that contains that package)
-_VENDORED = (
-    ("sequence_layers", "sequence-layers"),
-    ("audiotree", "audiotree"),
-)
+_VENDORED = (("sequence_layers", "sequence-layers"),)
 
 
 def install() -> None:

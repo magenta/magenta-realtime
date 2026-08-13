@@ -671,6 +671,15 @@ class SpectroStreamDecoder(nnx.Module):
         self.num_output_channels = num_output_channels
 
         self.streaming: bool = False
+        self.materialize_constants()
+
+    def materialize_constants(self) -> None:
+        """Reset the lookahead counter to its freshly-constructed value.
+
+        No checkpoint carries it, so a model built with ``nnx.eval_shape`` has
+        it abstract until ``init_cache`` runs — see
+        :mod:`magenta_rt.nnx.checkpoint_utils`.
+        """
         self._lookahead_remaining = LookaheadState(jnp.array(0, dtype=jnp.int32))
 
     def init_cache(self, *, batch: int = 1, dtype=jnp.float32) -> None:
@@ -766,6 +775,10 @@ class SpectroStreamSTFT(nnx.Module):
             time_padding=time_padding,
         )
 
+    def materialize_constants(self) -> None:
+        """Rebuild the derived constants of the wrapped analysis transform."""
+        self._stft.materialize_window()
+
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         # Audio arrives channel-major [B, C_audio, T]; promote bare mono
         # [B, T] by inserting the channel axis.
@@ -812,6 +825,10 @@ class SpectroStreamInverseSTFT(nnx.Module):
         self._istft.init_cache(
             batch=batch, num_channels=self.num_channels // 2, dtype=dtype,
         )
+
+    def materialize_constants(self) -> None:
+        """Rebuild the derived constants of the wrapped synthesis transform."""
+        self._istft.materialize_window()
 
     def _bitcast(self, v: jnp.ndarray) -> jnp.ndarray:
         v = v.astype(jnp.float32)
@@ -946,6 +963,19 @@ class SpectroStream(nnx.Module):
             raise RuntimeError("quantizer not configured")
         embeddings = self.quantizer.codes_to_embeddings(codes)
         return self.embeddings_to_waveform(embeddings)
+
+    def materialize_constants(self) -> None:
+        """Rebuild the STFT window tables an abstract build cannot restore.
+
+        The analysis and synthesis windows are derived from the frame geometry
+        rather than loaded, and the decoder's lookahead counter is streaming
+        state, so none of them survive either ``nnx.eval_shape`` or a
+        checkpoint. A loader that builds this codec abstractly must call this
+        before use — see :meth:`STFT.materialize_window`.
+        """
+        self.stft.materialize_constants()
+        self.inverse_stft.materialize_constants()
+        self.decoder.materialize_constants()
 
     # --- streaming lifecycle ----------------------------------------------
 

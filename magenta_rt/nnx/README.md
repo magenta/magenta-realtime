@@ -31,12 +31,12 @@ from magenta_rt import MagentaRT2Nnx  # = magenta_rt.nnx.system.MagentaRT2System
 
 mrt = MagentaRT2Nnx(size="mrt2_small")
 embedding = mrt.embed_style("disco funk")
-audio_tree, state = mrt.generate(style=embedding, frames=25)   # 1 second
-audio_tree, state = mrt.generate(style=embedding, frames=25, state=state)  # continue
+audio, state = mrt.generate(style=embedding, frames=25)   # 1 second
+audio, state = mrt.generate(style=embedding, frames=25, state=state)  # continue
 
 # Batched: N styles -> N parallel streams in one call (waveform [N, 2, T]).
 embeddings = mrt.embed_styles(["disco funk", "ambient drone"])
-audio_tree, state = mrt.generate(style=embeddings, frames=25)   # N = 2
+audio, state = mrt.generate(style=embeddings, frames=25)   # N = 2
 ```
 
 CFG uses the trained conditioning tokens (the `cfgs` channels), like the

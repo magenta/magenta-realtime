@@ -31,7 +31,7 @@ def _tree(batch: int = 3, channels: int = 2, samples: int = 16) -> AudioTree:
         rng.standard_normal((batch, channels, samples)).astype(np.float32),
         48_000,
         codes=rng.integers(0, 8, size=(batch, 2, 4), dtype=np.int32),
-        metadata={"style": rng.integers(0, 5, size=(batch, 3), dtype=np.int32)},
+        extras={"style": rng.integers(0, 5, size=(batch, 3), dtype=np.int32)},
     )
 
 
