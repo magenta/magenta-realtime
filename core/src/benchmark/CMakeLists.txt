@@ -31,7 +31,7 @@ if(NOT TARGET mlx)
     FetchContent_Declare(
         mlx
         GIT_REPOSITORY https://github.com/ml-explore/mlx.git
-        GIT_TAG        v0.31.1
+        GIT_TAG        v0.32.1
         GIT_SHALLOW    ON
     )
     set(MLX_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -43,17 +43,6 @@ if(NOT TARGET mlx)
     set(MLX_BUILD_CUDA OFF CACHE BOOL "" FORCE)
     message(STATUS "Fetching MLX... (this may take a moment)")
     FetchContent_MakeAvailable(mlx)
-
-    # Patch MLX header inclusion to support spaces in path.
-    # TODO: Remove once https://github.com/ml-explore/mlx/pull/3607 is merged.
-    file(READ "${mlx_SOURCE_DIR}/mlx/backend/metal/make_compiled_preamble.sh" MLX_CONTENT)
-    string(REPLACE
-    "declare -a HDRS_LIST=($HDRS)"
-    "declare -a HDRS_LIST=(); while read -r dots path; do [ -n \"$dots\" ] && HDRS_LIST+=(\"$dots\" \"$path\"); done <<< \"$HDRS\""
-    MLX_CONTENT
-    "${MLX_CONTENT}"
-    )
-    file(WRITE "${mlx_SOURCE_DIR}/mlx/backend/metal/make_compiled_preamble.sh" "${MLX_CONTENT}")
 endif()
 
 # ─── Standalone latency benchmark ─────────────────────────────────────────────
