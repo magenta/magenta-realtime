@@ -20,6 +20,14 @@ import GUI from 'lil-gui';
 import { ALL_COLORS } from './colors';
 import './prompt-surface.css';
 
+/** True if the browser supports `field-sizing: content`. */
+const supportsFieldSizing = (() => {
+  if (typeof document === 'undefined') return false;
+  const el = document.createElement('textarea');
+  el.style.setProperty('field-sizing', 'content');
+  return el.style.getPropertyValue('field-sizing') === 'content';
+})();
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const STROKE_WIDTH = 3;
@@ -978,20 +986,35 @@ export function PromptSurface({
               }}
             >
               <textarea
-                ref={!p.isAudio && isJustCreated ? (el) => {
-                  if (el) {
+                ref={(el) => {
+                  // Auto-focus for just-created prompts.
+                  if (!p.isAudio && isJustCreated && el) {
                     el.focus();
                     el.select();
                     justCreatedIdRef.current = null;
                   }
-                } : undefined}
+                  // Fallback auto-sizing when field-sizing: content is unsupported.
+                  if (!supportsFieldSizing && el) {
+                    el.style.height = 'auto';
+                    el.style.height = `${el.scrollHeight}px`;
+                    // Measure width: use a temporary offscreen span.
+                    const span = document.createElement('span');
+                    span.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;'
+                      + `font:${window.getComputedStyle(el).font};padding:${window.getComputedStyle(el).padding};`;
+                    span.textContent = el.value || ' ';
+                    document.body.appendChild(span);
+                    const measuredWidth = Math.min(span.offsetWidth + 4, parseInt(String(labelMaxWidth)) || 180);
+                    el.style.width = `${measuredWidth}px`;
+                    span.remove();
+                  }
+                }}
                 readOnly={p.isAudio}
                 style={{
                   padding: '4px 12px',
                   borderRadius: '15px',
                   fontSize: `${labelFontSize}px`,
                   fontWeight: 500,
-                  width: 'max-content',
+                  width: supportsFieldSizing ? 'max-content' : undefined,
                   maxWidth: labelMaxWidth,
                   maxHeight: '100px',
                   resize: 'none',
