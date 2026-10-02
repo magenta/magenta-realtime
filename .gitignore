@@ -9,8 +9,14 @@ node_modules/
 # artifacts
 .coverage
 *.npy
+*.bin
+*.idx
 benchmark_build/
 build/
+# ggml parity references: ~96 MB of .bin payloads are already ignored above, so
+# the manifests describing them would dangle. Regenerate the whole set with
+# scripts/generate_ggml_reference.py.
+tests/testdata/ggml/
 dist/
 docs/_build/
 outputs/
