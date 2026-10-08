@@ -57,3 +57,9 @@ add_executable(numpy_random_state_test
     src/numpy_random_state_test.cpp
 )
 target_include_directories(numpy_random_state_test PRIVATE src)
+
+# Standalone unit test for the stereo RingBuffer reads, writes and drains
+add_executable(ring_buffer_test
+    src/ring_buffer_test.cpp
+)
+target_include_directories(ring_buffer_test PRIVATE include)

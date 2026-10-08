@@ -183,8 +183,8 @@ void RealtimeRunner::start_locked(bool skip_reset) {
     for (int i = 0; i < 3; ++i) {
         detail::AutoreleasePool pool;
         engine_.generate_frame(audio_buf_L_, audio_buf_R_);
-        ring_L_.write(audio_buf_L_, kFrameSamples);
-        ring_R_.write(audio_buf_R_, kFrameSamples);
+        RingBuffer::write_pair(ring_L_, ring_R_, audio_buf_L_, audio_buf_R_,
+                               kFrameSamples);
     }
     running_.store(true, std::memory_order_relaxed);
     thread_ = std::thread(&RealtimeRunner::inference_loop, this);
@@ -215,20 +215,19 @@ bool RealtimeRunner::read_audio_stereo(float* destL, float* destR,
     // requests more frames than the ring buffer can hold at once.
     if (blocking) {
         std::size_t target = std::min(count, ring_L_.get_virtual_capacity());
-        while (ring_L_.available() < target &&
+        while (std::min(ring_L_.available(), ring_R_.available()) < target &&
                running_.load(std::memory_order_relaxed)) {
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
     }
 
-    bool okL = ring_L_.read(destL, count);
-    bool okR = ring_R_.read(destR, count);
+    bool ok = RingBuffer::read_pair(ring_L_, ring_R_, destL, destR, count);
 
     // A real-time underrun = the inference thread couldn't keep pace, so the
     // ring buffer zero-padded. Count it as a dropped frame. Skip the blocking
     // (offline render) path: there the audio thread deliberately waits for
     // data, so a short read isn't a real-time dropout.
-    if (!blocking && !(okL && okR)) {
+    if (!blocking && !ok) {
         dropped_frame_count_.fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -271,7 +270,7 @@ bool RealtimeRunner::read_audio_stereo(float* destL, float* destR,
         }
     }
 
-    return okL && okR;
+    return ok;
 }
 
 // ─── MIDI notes ─────────────────────────────────────────────────────────────
@@ -413,8 +412,8 @@ void RealtimeRunner::inference_loop() {
             // 3-frame priming to prevent audio underruns on reset
             for (int i = 0; i < 3; ++i) {
                 engine_.generate_frame(audio_buf_L_, audio_buf_R_);
-                ring_L_.write(audio_buf_L_, kFrameSamples);
-                ring_R_.write(audio_buf_R_, kFrameSamples);
+                RingBuffer::write_pair(ring_L_, ring_R_, audio_buf_L_,
+                                       audio_buf_R_, kFrameSamples);
             }
             continue;
         }
@@ -446,19 +445,16 @@ void RealtimeRunner::inference_loop() {
             std::memory_order_relaxed);
 
         if (ok) {
-            // Wait until there is space in the buffer instead of dropping
+            // Wait until there is space in both buffers instead of dropping
             // the frame. GPU keepalive: tiny GPU ops keep macOS from
             // downclocking the GPU during idle gaps (causes permanent
             // ~8 ms latency increase after ~20 sec of running plugin otherwise).
-            while (ring_L_.free_space() < kFrameSamples &&
-                   running_.load(std::memory_order_relaxed)) {
+            while (running_.load(std::memory_order_relaxed) &&
+                   !RingBuffer::write_pair(ring_L_, ring_R_, audio_buf_L_,
+                                           audio_buf_R_, kFrameSamples)) {
                 auto dummy = mx::array({0.0f}) + mx::array({0.0f});
                 mx::eval(dummy);
                 std::this_thread::sleep_for(std::chrono::microseconds(200));
-            }
-            if (running_.load(std::memory_order_relaxed)) {
-                ring_L_.write(audio_buf_L_, kFrameSamples);
-                ring_R_.write(audio_buf_R_, kFrameSamples);
             }
         } else {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));

@@ -302,8 +302,7 @@ public:
     /// Audio-thread safe: called on DAW stopped→playing transition. Drains
     /// the ring buffers without disturbing the inference thread's write cursor.
     void reset_for_playback() {
-        ring_L_.drain();
-        ring_R_.drain();
+        RingBuffer::drain_pair(ring_L_, ring_R_);
     }
 
     /// Full reset: stops the inference thread, resets model state, clears the
