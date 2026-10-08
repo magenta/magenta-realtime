@@ -109,6 +109,11 @@ jobs:
         cmake --build build --target numpy_random_state_test -j$(sysctl -n hw.ncpu)
         ./build/core/numpy_random_state_test
 
+    - name: Compile and Run RingBuffer C++ Unit Test
+      run: |
+        cmake --build build --target ring_buffer_test -j$(sysctl -n hw.ncpu)
+        ./build/core/ring_buffer_test
+
     - name: Build C++ Core and Examples
       run: |
         cmake --build build --target \
