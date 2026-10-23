@@ -15,7 +15,7 @@
 
 """Tracked benchmark: export → build → run → log to JSONL.
 
-Output name is auto-generated as: {MODEL_PREFIX}_int{bits}_rvq12_{YYMMDD}_{sha}
+Output name is auto-generated as: {MODEL_PREFIX}_int{bits}_rvq12_cfgs0_{YYMMDD}_{sha}
 
 Usage:
     python scripts/bench_track.py                       # defaults: 8-bit, 100 steps
@@ -121,7 +121,7 @@ def main():
         # Extract git SHA from name (last segment after _)
         sha = output_name.rsplit("_", 1)[-1] if "_" in output_name else "unknown"
     else:
-        # Auto-generate output name: {MODEL_PREFIX}_int{bits}_rvq12_{YYMMDD}_{sha}
+        # Auto-generate output name: {MODEL_PREFIX}_int{bits}_rvq12_cfgs0_{YYMMDD}_{sha}
         sha = git_sha()
         date_str = datetime.datetime.now().strftime("%y%m%d")
         output_name = f"{MODEL_PREFIX}_int{args.bits}_rvq12_cfgs0_{date_str}_{sha}"

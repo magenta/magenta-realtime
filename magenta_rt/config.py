@@ -104,7 +104,7 @@ XXL_SHALLOW = ModelSpec(
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class TokensConfig:
-  """Describes an SS, MLM or SS2Vec tokens."""
+  """Describes SS, MLM or SS2Vec tokens."""
 
   key: str = 'embeddings'
   codebook_size: int = -1
